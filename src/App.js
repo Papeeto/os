@@ -274,19 +274,167 @@ const PHARMACIES_YAOUNDE = [
   { id:45, nom:"Pharmacie Étoa-Meki",           quartier:"Étoa-Meki",        tel:"+237 699 22 33 44", lat:3.8620, lng:11.5460, ouvert:true  },
 ];
 
-// Stock démo pour les nouvelles pharmacies
+// Stock démo pour inscription nouvelles pharmacies
 const STOCK_DEMO = [
-  { nom:"Paracétamol 500mg",                        cat:"Antidouleur",   prix:50,   qte:150 },
-  { nom:"Amoxicilline 250mg gélules",                cat:"Antibiotique",  prix:900,  qte:5   },
-  { nom:"Artéméther + Luméfantrine (Coartem) 20/120mg", cat:"Antipaludéen", prix:2500, qte:20  },
-  { nom:"Quinine 300mg comprimés",                   cat:"Antipaludéen",  prix:350,  qte:80  },
-  { nom:"Cotrimoxazole (TMP/SMX) 480mg",             cat:"Antibiotique",  prix:150,  qte:100 },
-  { nom:"Ibuprofène 400mg",                          cat:"Antidouleur",   prix:300,  qte:60  },
-  { nom:"Vitamine C 500mg",                          cat:"Vitamines",     prix:100,  qte:200 },
-  { nom:"ORS (Sels de réhydratation orale)",         cat:"Gastro",        prix:100,  qte:0   },
-  { nom:"Métronidazole 250mg",                       cat:"Antibiotique",  prix:300,  qte:7   },
-  { nom:"Oméprazole 20mg",                           cat:"Gastro",        prix:400,  qte:30  },
+  { nom:"Paracétamol 500mg",                        cat:"Antidouleur",   prix:50,   qte:150, exp:"2027-06-01" },
+  { nom:"Amoxicilline 250mg gélules",                cat:"Antibiotique",  prix:900,  qte:5,   exp:"2026-08-15" },
+  { nom:"Artéméther + Luméfantrine (Coartem) 20/120mg", cat:"Antipaludéen", prix:2500, qte:20, exp:"2027-01-20" },
+  { nom:"Quinine 300mg comprimés",                   cat:"Antipaludéen",  prix:350,  qte:80,  exp:"2026-12-10" },
+  { nom:"Cotrimoxazole (TMP/SMX) 480mg",             cat:"Antibiotique",  prix:150,  qte:100, exp:"2027-02-14" },
+  { nom:"Ibuprofène 400mg",                          cat:"Antidouleur",   prix:300,  qte:60,  exp:"2027-03-01" },
+  { nom:"Vitamine C 500mg",                          cat:"Vitamines",     prix:100,  qte:200, exp:"2027-05-01" },
+  { nom:"ORS (Sels de réhydratation orale)",         cat:"Gastro",        prix:100,  qte:0,   exp:"2027-01-01" },
+  { nom:"Métronidazole 250mg",                       cat:"Antibiotique",  prix:300,  qte:7,   exp:"2026-09-05" },
+  { nom:"Oméprazole 20mg",                           cat:"Gastro",        prix:400,  qte:30,  exp:"2027-04-01" },
 ];
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🌱 DONNÉES DE DÉMONSTRATION — Stocks variés par pharmacie
+// Chaque pharmacie a son propre prix (reflète la réalité camerounaise)
+// ══════════════════════════════════════════════════════════════════════════════
+const DEMO_STOCKS = [
+  {
+    pharmacieIdx: 0, // Pharmacie Bastos
+    stock: [
+      { nom:"Paracétamol 500mg",                        cat:"Antidouleur",   prix:50,   qte:200, exp:"2027-06-01" },
+      { nom:"Artéméther + Luméfantrine (Coartem) 20/120mg", cat:"Antipaludéen", prix:2800, qte:15, exp:"2027-01-20" },
+      { nom:"Amoxicilline 250mg gélules",                cat:"Antibiotique",  prix:950,  qte:30,  exp:"2026-08-15" },
+      { nom:"Quinine 300mg comprimés",                   cat:"Antipaludéen",  prix:400,  qte:60,  exp:"2026-12-10" },
+      { nom:"Ibuprofène 400mg",                          cat:"Antidouleur",   prix:350,  qte:80,  exp:"2027-03-01" },
+      { nom:"Métronidazole 250mg",                       cat:"Antibiotique",  prix:350,  qte:40,  exp:"2026-09-05" },
+      { nom:"Amlodipine 5mg",                            cat:"Cardio",        prix:700,  qte:25,  exp:"2027-07-01" },
+      { nom:"Metformine 500mg",                          cat:"Diabète",       prix:600,  qte:50,  exp:"2027-05-01" },
+      { nom:"Oméprazole 20mg",                           cat:"Gastro",        prix:450,  qte:35,  exp:"2027-04-01" },
+      { nom:"Azithromycine 500mg (Zithromax)",           cat:"Antibiotique",  prix:2200, qte:10,  exp:"2026-10-01" },
+      { nom:"Salbutamol (Ventoline) 100mcg spray",       cat:"Respiratoire",  prix:3200, qte:8,   exp:"2027-08-01" },
+      { nom:"Insuline Actrapid 100UI/ml",                cat:"Diabète",       prix:5500, qte:5,   exp:"2026-11-01" },
+    ]
+  },
+  {
+    pharmacieIdx: 1, // Pharmacie du Centre
+    stock: [
+      { nom:"Paracétamol 500mg",                        cat:"Antidouleur",   prix:45,   qte:300, exp:"2027-06-01" },
+      { nom:"Artéméther + Luméfantrine (Coartem) 20/120mg", cat:"Antipaludéen", prix:2500, qte:25, exp:"2027-01-20" },
+      { nom:"Amoxicilline 250mg gélules",                cat:"Antibiotique",  prix:800,  qte:50,  exp:"2026-08-15" },
+      { nom:"Quinine 300mg comprimés",                   cat:"Antipaludéen",  prix:350,  qte:100, exp:"2026-12-10" },
+      { nom:"Ciprofloxacine 500mg",                      cat:"Antibiotique",  prix:1600, qte:20,  exp:"2027-01-15" },
+      { nom:"Cotrimoxazole (TMP/SMX) 480mg",             cat:"Antibiotique",  prix:150,  qte:120, exp:"2027-02-14" },
+      { nom:"Diclofénac 50mg",                           cat:"Antidouleur",   prix:280,  qte:60,  exp:"2027-03-01" },
+      { nom:"Amlodipine 5mg",                            cat:"Cardio",        prix:650,  qte:40,  exp:"2027-07-01" },
+      { nom:"Vitamine C 500mg",                          cat:"Vitamines",     prix:100,  qte:250, exp:"2027-05-01" },
+      { nom:"Oméprazole 20mg",                           cat:"Gastro",        prix:400,  qte:45,  exp:"2027-04-01" },
+      { nom:"Ceftriaxone injectable 1g",                 cat:"Antibiotique",  prix:2800, qte:12,  exp:"2026-09-01" },
+      { nom:"Artésunate + Amodiaquine (ASAQ) 100/270mg", cat:"Antipaludéen", prix:1900, qte:20,  exp:"2027-02-01" },
+    ]
+  },
+  {
+    pharmacieIdx: 2, // Pharmacie Obili
+    stock: [
+      { nom:"Paracétamol 500mg",                        cat:"Antidouleur",   prix:50,   qte:150, exp:"2027-06-01" },
+      { nom:"Artéméther + Luméfantrine (Coartem) 20/120mg", cat:"Antipaludéen", prix:2600, qte:18, exp:"2027-01-20" },
+      { nom:"Amoxicilline 500mg gélules",                cat:"Antibiotique",  prix:1300, qte:25,  exp:"2026-09-15" },
+      { nom:"Quinine 300mg comprimés",                   cat:"Antipaludéen",  prix:300,  qte:70,  exp:"2026-12-10" },
+      { nom:"Ibuprofène 200mg",                          cat:"Antidouleur",   prix:200,  qte:90,  exp:"2027-03-01" },
+      { nom:"Metformine 500mg",                          cat:"Diabète",       prix:550,  qte:35,  exp:"2027-05-01" },
+      { nom:"Fer + Acide folique",                       cat:"Vitamines",     prix:280,  qte:80,  exp:"2027-06-01" },
+      { nom:"Albendazole 400mg",                         cat:"Gastro",        prix:220,  qte:60,  exp:"2027-04-01" },
+      { nom:"Loratadine 10mg (antihistaminique)",        cat:"Respiratoire",  prix:320,  qte:45,  exp:"2027-07-01" },
+      { nom:"Amoxicilline 250mg gélules",                cat:"Antibiotique",  prix:820,  qte:8,   exp:"2026-08-15" },
+    ]
+  },
+  {
+    pharmacieIdx: 6, // Pharmacie Biyem-Assi
+    stock: [
+      { nom:"Paracétamol 500mg",                        cat:"Antidouleur",   prix:50,   qte:180, exp:"2027-06-01" },
+      { nom:"Artéméther + Luméfantrine (Coartem) 20/120mg", cat:"Antipaludéen", prix:2400, qte:30, exp:"2027-01-20" },
+      { nom:"Amoxicilline 250mg gélules",                cat:"Antibiotique",  prix:850,  qte:45,  exp:"2026-08-15" },
+      { nom:"Quinine 300mg comprimés",                   cat:"Antipaludéen",  prix:320,  qte:90,  exp:"2026-12-10" },
+      { nom:"Cotrimoxazole (TMP/SMX) 480mg",             cat:"Antibiotique",  prix:140,  qte:130, exp:"2027-02-14" },
+      { nom:"Métronidazole 250mg",                       cat:"Antibiotique",  prix:280,  qte:55,  exp:"2026-09-05" },
+      { nom:"Ibuprofène 400mg",                          cat:"Antidouleur",   prix:280,  qte:70,  exp:"2027-03-01" },
+      { nom:"Oméprazole 20mg",                           cat:"Gastro",        prix:380,  qte:40,  exp:"2027-04-01" },
+      { nom:"Vitamines B complexe",                      cat:"Vitamines",     prix:220,  qte:100, exp:"2027-05-01" },
+      { nom:"Amlodipine 5mg",                            cat:"Cardio",        prix:600,  qte:30,  exp:"2027-07-01" },
+      { nom:"Metformine 500mg",                          cat:"Diabète",       prix:520,  qte:40,  exp:"2027-05-01" },
+      { nom:"Phénobarbital 100mg",                       cat:"Neurologie",    prix:180,  qte:25,  exp:"2027-03-01" },
+    ]
+  },
+  {
+    pharmacieIdx: 8, // Pharmacie Essos
+    stock: [
+      { nom:"Paracétamol 500mg",                        cat:"Antidouleur",   prix:55,   qte:120, exp:"2027-06-01" },
+      { nom:"Artéméther + Luméfantrine (Coartem) 20/120mg", cat:"Antipaludéen", prix:2700, qte:12, exp:"2027-01-20" },
+      { nom:"Amoxicilline 250mg gélules",                cat:"Antibiotique",  prix:880,  qte:20,  exp:"2026-08-15" },
+      { nom:"Quinine 300mg comprimés",                   cat:"Antipaludéen",  prix:380,  qte:50,  exp:"2026-12-10" },
+      { nom:"Ciprofloxacine 500mg",                      cat:"Antibiotique",  prix:1700, qte:15,  exp:"2027-01-15" },
+      { nom:"Ibuprofène 400mg",                          cat:"Antidouleur",   prix:320,  qte:50,  exp:"2027-03-01" },
+      { nom:"Captopril 25mg",                            cat:"Cardio",        prix:450,  qte:35,  exp:"2027-06-01" },
+      { nom:"Glibenclamide 5mg",                         cat:"Diabète",       prix:350,  qte:45,  exp:"2027-04-01" },
+      { nom:"Vitamine C 500mg",                          cat:"Vitamines",     prix:120,  qte:180, exp:"2027-05-01" },
+      { nom:"Fer + Acide folique",                       cat:"Vitamines",     prix:260,  qte:70,  exp:"2027-06-01" },
+    ]
+  },
+  {
+    pharmacieIdx: 9, // Pharmacie Nlongkak
+    stock: [
+      { nom:"Paracétamol 500mg",                        cat:"Antidouleur",   prix:50,   qte:220, exp:"2027-06-01" },
+      { nom:"Artéméther + Luméfantrine (Coartem) 20/120mg", cat:"Antipaludéen", prix:2500, qte:22, exp:"2027-01-20" },
+      { nom:"Amoxicilline 250mg gélules",                cat:"Antibiotique",  prix:900,  qte:35,  exp:"2026-08-15" },
+      { nom:"Quinine 300mg comprimés",                   cat:"Antipaludéen",  prix:350,  qte:80,  exp:"2026-12-10" },
+      { nom:"Azithromycine 500mg (Zithromax)",           cat:"Antibiotique",  prix:2100, qte:8,   exp:"2026-10-01" },
+      { nom:"Métronidazole 250mg",                       cat:"Antibiotique",  prix:300,  qte:60,  exp:"2026-09-05" },
+      { nom:"Oméprazole 20mg",                           cat:"Gastro",        prix:420,  qte:30,  exp:"2027-04-01" },
+      { nom:"Amlodipine 10mg",                           cat:"Cardio",        prix:1000, qte:20,  exp:"2027-07-01" },
+      { nom:"Insuline NPH 100UI/ml",                     cat:"Diabète",       prix:5200, qte:4,   exp:"2026-11-01" },
+      { nom:"Cotrimoxazole (TMP/SMX) 480mg",             cat:"Antibiotique",  prix:160,  qte:110, exp:"2027-02-14" },
+      { nom:"Salbutamol (Ventoline) 100mcg spray",       cat:"Respiratoire",  prix:3100, qte:6,   exp:"2027-08-01" },
+    ]
+  },
+  {
+    pharmacieIdx: 10, // Pharmacie Cité Verte
+    stock: [
+      { nom:"Paracétamol 500mg",                        cat:"Antidouleur",   prix:45,   qte:250, exp:"2027-06-01" },
+      { nom:"Artéméther + Luméfantrine (Coartem) 20/120mg", cat:"Antipaludéen", prix:2450, qte:28, exp:"2027-01-20" },
+      { nom:"Amoxicilline 250mg gélules",                cat:"Antibiotique",  prix:820,  qte:55,  exp:"2026-08-15" },
+      { nom:"Ibuprofène 400mg",                          cat:"Antidouleur",   prix:260,  qte:90,  exp:"2027-03-01" },
+      { nom:"Diclofénac 50mg",                           cat:"Antidouleur",   prix:250,  qte:65,  exp:"2027-03-01" },
+      { nom:"Cotrimoxazole (TMP/SMX) 480mg",             cat:"Antibiotique",  prix:145,  qte:140, exp:"2027-02-14" },
+      { nom:"Oméprazole 20mg",                           cat:"Gastro",        prix:390,  qte:50,  exp:"2027-04-01" },
+      { nom:"Metformine 850mg",                          cat:"Diabète",       prix:750,  qte:30,  exp:"2027-05-01" },
+      { nom:"Vitamine C 500mg",                          cat:"Vitamines",     prix:100,  qte:200, exp:"2027-05-01" },
+      { nom:"Kétoconazole crème 2%",                     cat:"Dermatologie",  prix:1600, qte:15,  exp:"2027-06-01" },
+    ]
+  },
+  {
+    pharmacieIdx: 13, // Pharmacie Le Cygne
+    stock: [
+      { nom:"Paracétamol 500mg",                        cat:"Antidouleur",   prix:50,   qte:200, exp:"2027-06-01" },
+      { nom:"Artéméther + Luméfantrine (Coartem) 20/120mg", cat:"Antipaludéen", prix:2600, qte:20, exp:"2027-01-20" },
+      { nom:"Quinine 300mg comprimés",                   cat:"Antipaludéen",  prix:360,  qte:75,  exp:"2026-12-10" },
+      { nom:"Amoxicilline 250mg gélules",                cat:"Antibiotique",  prix:870,  qte:40,  exp:"2026-08-15" },
+      { nom:"Ceftriaxone injectable 1g",                 cat:"Antibiotique",  prix:2600, qte:10,  exp:"2026-09-01" },
+      { nom:"Losartan 50mg",                             cat:"Cardio",        prix:1300, qte:25,  exp:"2027-08-01" },
+      { nom:"Insuline Actrapid 100UI/ml",                cat:"Diabète",       prix:5300, qte:6,   exp:"2026-11-01" },
+      { nom:"Béclométhasone spray 250mcg",               cat:"Respiratoire",  prix:5200, qte:4,   exp:"2027-09-01" },
+      { nom:"Métronidazole 250mg",                       cat:"Antibiotique",  prix:310,  qte:45,  exp:"2026-09-05" },
+      { nom:"Oméprazole 40mg injectable",                cat:"Gastro",        prix:2100, qte:8,   exp:"2027-04-01" },
+    ]
+  },
+];
+
+// Calcul distance GPS (formule Haversine)
+function calculerDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+    Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function formatDistance(km) {
+  return km < 1 ? Math.round(km*1000)+"m" : km.toFixed(1)+"km";
+}
 
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -598,36 +746,79 @@ function AccueilPatient({ setPage, setRecherche }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // 🔍 RÉSULTATS
 // ══════════════════════════════════════════════════════════════════════════════
+// ── Seed démo au premier chargement ─────────────────────────────────────────
+function useSeedDemo(fbReady) {
+  useEffect(()=>{
+    if(!fbReady)return;
+    getDB().ref("demo_seeded").once("value").then(snap=>{
+      if(snap.exists())return; // déjà seedé
+      const promises=[];
+      DEMO_STOCKS.forEach(({pharmacieIdx,stock})=>{
+        const ph=PHARMACIES_YAOUNDE[pharmacieIdx];
+        const uid="demo_ph_"+pharmacieIdx;
+        // Créer la pharmacie démo
+        promises.push(getDB().ref("pharmacies/"+uid).set({
+          nom:ph.nom, quartier:ph.quartier, adresse:ph.quartier+", Yaoundé",
+          tel:ph.tel, ouvert:ph.ouvert, lat:ph.lat, lng:ph.lng,
+          adminUid:uid, isDemo:true, createdAt:Date.now()
+        }));
+        // Ajouter le stock avec prix variés
+        stock.forEach(med=>{
+          promises.push(getDB().ref("stock/"+uid).push({
+            ...med, pharmacieId:uid, pharmacieNom:ph.nom,
+            quartier:ph.quartier, lat:ph.lat, lng:ph.lng, updatedAt:Date.now()
+          }));
+        });
+      });
+      promises.push(getDB().ref("demo_seeded").set(true));
+      Promise.all(promises).then(()=>console.log("✅ Données démo chargées"));
+    });
+  },[fbReady]);
+}
+
 function ResultatsPatient({ recherche, setPage }) {
   const fbReady=useFirebaseReady();
-  const [resultatsFirebase,setResultatsFirebase]=useState([]);
-  const [fbLoading,setFbLoading]=useState(true);
+  useSeedDemo(fbReady);
+  const [resultats,setResultats]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [userPos,setUserPos]=useState(null);
+
+  // Géolocalisation silencieuse
+  useEffect(()=>{
+    navigator.geolocation?.getCurrentPosition(
+      pos=>setUserPos([pos.coords.latitude,pos.coords.longitude]),
+      ()=>setUserPos([3.8667,11.5167]) // centre Yaoundé par défaut
+    );
+  },[]);
 
   useEffect(()=>{
-    setResultatsFirebase([]); setFbLoading(true);
     if(!fbReady)return;
+    setLoading(true);
     getDB().ref("stock").once("value").then(snap=>{
       const found=[];
       if(snap.exists()){
         Object.entries(snap.val()).forEach(([uid,items])=>{
           Object.entries(items).forEach(([itemId,item])=>{
-            if(item.nom?.toLowerCase().includes(recherche.toLowerCase())&&item.qte>0)
-              found.push({...item,itemId,pharmacieUid:uid});
+            if(item.nom?.toLowerCase().includes(recherche.toLowerCase())&&item.qte>0){
+              // Calcul distance si géoloc disponible
+              const pos=userPos||[3.8667,11.5167];
+              const dist=item.lat&&item.lng ? calculerDistance(pos[0],pos[1],item.lat,item.lng) : 99;
+              found.push({...item,itemId,pharmacieUid:uid,distance:dist});
+            }
           });
         });
       }
-      found.sort((a,b)=>a.prix-b.prix);
-      setResultatsFirebase(found);
-      setFbLoading(false);
-    }).catch(()=>setFbLoading(false));
-  },[fbReady,recherche]);
+      // Trier par distance d'abord, puis par prix
+      found.sort((a,b)=> a.distance!==b.distance ? a.distance-b.distance : a.prix-b.prix);
+      setResultats(found);
+      setLoading(false);
+    }).catch(()=>setLoading(false));
+  },[fbReady,recherche,userPos]);
 
-  // Résultats catalogue — IMMÉDIATS, pas besoin de Firebase
   const catalogueMatch = CATALOGUE_MEDICAMENTS.filter(m=>
     m.nom.toLowerCase().includes(recherche.toLowerCase())
   );
-
-  const hasFbResults = resultatsFirebase.length > 0;
+  const hasFbResults = resultats.length > 0;
 
   return(
     <div className="main">
