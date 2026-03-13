@@ -2167,7 +2167,7 @@ export default function App() {
   const handleAuth=u=>{setUser(u);setRole("pharmacie");setPage("dashboard");};
   const handleLogout=async()=>{await getAuth().signOut();setUser(null);setRole("patient");setPage("accueil");setStock([]);};
   if(!fbReady||!authChecked)return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh"}}><div className="loading"><div className="spinner"></div> Chargement Mediconline...</div></div>;
-  const TABS_PATIENT=[{id:"accueil",label:"🏠 Accueil"},{id:"carte",label:"🗺 Carte"},{id:"garde",label:"🌙 Garde"},{id:"resultats",label:"🔍 Recherche"},{id:"compte",label:"👤 Compte"}];
+  const TABS_PATIENT=[{id:"accueil",label:"🏠 Accueil"},{id:"carte",label:"🗺 Carte"},{id:"garde",label:"🌙 Garde"},{id:"resultats",label:"🔍 Chercher"},{id:"compte",label:"👤 Compte"}];
   const TABS_PH=[{id:"dashboard",label:"📊 Dashboard"},{id:"stock",label:"📦 Stock"},{id:"ajouter",label:"➕ Ajouter"},{id:"carte",label:"🗺 Carte"},{id:"garde",label:"🌙 Garde"},{id:"profil",label:"⚙️ Profil"}];
   const tabs=role==="patient"?TABS_PATIENT:TABS_PH;
   return(
