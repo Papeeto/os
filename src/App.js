@@ -2174,7 +2174,35 @@ export default function App() {
     <div className="app">
       <Topbar role={role} setRole={setRole} setPage={setPage} user={user} onLogout={handleLogout} onAdminOpen={()=>setAdminOpen(true)}/>
       {adminOpen&&<PageAdmin onClose={()=>setAdminOpen(false)}/>}
-      <div className="tabs">{tabs.map(t=><div key={t.id} className={"tab"+(page===t.id?" active":"")} onClick={()=>setPage(t.id)}>{t.label}</div>)}</div>
+      <div style={{
+        display:"flex",background:"white",
+        borderBottom:"2px solid #E8EDF2",
+        overflowX:"auto",scrollbarWidth:"none",
+        position:"sticky",top:0,zIndex:40,
+        WebkitOverflowScrolling:"touch"
+      }}>
+        {tabs.map(t=>(
+          <div key={t.id}
+            onClick={()=>setPage(t.id)}
+            style={{
+              flex:"1 1 0",minWidth:0,
+              padding:"13px 4px",
+              fontSize:"0.72rem",fontWeight:700,
+              fontFamily:"Mulish",
+              textAlign:"center",
+              cursor:"pointer",
+              whiteSpace:"nowrap",
+              overflow:"hidden",
+              textOverflow:"ellipsis",
+              color: page===t.id?"#0A7B6C":"#8899AA",
+              borderBottom: page===t.id?"3px solid #0A7B6C":"3px solid transparent",
+              background: page===t.id?"#F4FBF9":"white",
+              transition:"all 0.15s"
+            }}>
+            {t.label}
+          </div>
+        ))}
+      </div>
       {role==="patient"&&page==="accueil"   &&<AccueilPatient setPage={setPage} setRecherche={setRecherche}/>}
       {role==="patient"&&page==="carte"     &&<PageCarte/>}
       {role==="patient"&&page==="garde"     &&<PageGarde setPage={setPage}/>}
