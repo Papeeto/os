@@ -1021,6 +1021,210 @@ function AccueilPatient({ setPage, setRecherche }) {
 // 🔍 RÉSULTATS
 // ══════════════════════════════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════════════════════════
+// 👤 PROFIL PATIENT
+// ══════════════════════════════════════════════════════════════════════════════
+function ProfilPatient({ user, onLogout }) {
+  const fbReady = useFirebaseReady();
+  const [favoris, setFavoris] = useState([]);
+  const [historique, setHistorique] = useState([]);
+
+  useEffect(()=>{
+    if(!fbReady||!user?.uid) return;
+    getDB().ref("patients/"+user.uid+"/favoris").on("value", snap=>{
+      setFavoris(snap.exists()?Object.values(snap.val()):[]);
+    });
+    getDB().ref("patients/"+user.uid+"/historique").orderByChild("date").limitToLast(10).on("value", snap=>{
+      if(snap.exists()) {
+        const items = Object.values(snap.val()).reverse();
+        setHistorique(items);
+      }
+    });
+    return()=>{
+      getDB().ref("patients/"+user.uid+"/favoris").off();
+      getDB().ref("patients/"+user.uid+"/historique").off();
+    };
+  },[fbReady, user]);
+
+  const retirerFavori = async(nom)=>{
+    const snap = await getDB().ref("patients/"+user.uid+"/favoris").once("value");
+    if(!snap.exists()) return;
+    const entries = Object.entries(snap.val());
+    const found = entries.find(([k,v])=>v.nom===nom);
+    if(found) await getDB().ref("patients/"+user.uid+"/favoris/"+found[0]).remove();
+  };
+
+  return(
+    <div className="main">
+      <div className="page-title mb20">👤 Mon compte</div>
+
+      {/* Infos */}
+      <div className="card mb20">
+        <div className="profile-header">
+          <div className="avatar" style={{background:"#EBF4FF",color:"var(--navy)"}}>👤</div>
+          <div>
+            <div className="profile-name">{user.nom||user.email}</div>
+            <div style={{fontSize:"0.8rem",color:"var(--grey-text)"}}>{user.email}</div>
+          </div>
+          <button className="btn btn-secondary btn-sm" style={{marginLeft:"auto"}} onClick={onLogout}>
+            Déconnexion
+          </button>
+        </div>
+      </div>
+
+      {/* Favoris */}
+      <div className="card mb20">
+        <div className="card-header">
+          <div className="card-title">⭐ Médicaments favoris</div>
+          <span className="tag tag-blue">{favoris.length}</span>
+        </div>
+        {favoris.length===0?(
+          <div style={{textAlign:"center",color:"var(--grey-text)",padding:"24px 0",fontSize:"0.85rem"}}>
+            Pas encore de favoris.<br/>Ajoutez des médicaments depuis les résultats de recherche.
+          </div>
+        ):(
+          favoris.map((f,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid var(--grey-border)"}}>
+              <div>
+                <div style={{fontWeight:600,color:"var(--navy)",fontSize:"0.85rem"}}>{f.nom}</div>
+                <div style={{fontSize:"0.75rem",color:"var(--grey-text)"}}>{f.cat}</div>
+              </div>
+              <button onClick={()=>retirerFavori(f.nom)} style={{background:"none",border:"none",color:"var(--grey-text)",cursor:"pointer",fontSize:"1.1rem"}}>✕</button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Historique */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">🕐 Dernières recherches</div>
+        </div>
+        {historique.length===0?(
+          <div style={{textAlign:"center",color:"var(--grey-text)",padding:"24px 0",fontSize:"0.85rem"}}>Aucune recherche enregistrée.</div>
+        ):(
+          historique.map((h,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid var(--grey-border)"}}>
+              <span style={{fontSize:"0.85rem",color:"var(--navy)"}}>{h.terme}</span>
+              <span style={{fontSize:"0.72rem",color:"var(--grey-text)"}}>{new Date(h.date).toLocaleDateString("fr-FR")}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 👤 PAGE AUTH PATIENT — Connexion / Inscription
+// ══════════════════════════════════════════════════════════════════════════════
+function AuthPatient({ onAuth, onSkip }) {
+  const fbReady = useFirebaseReady();
+  const [mode, setMode] = useState("choix"); // "choix" | "login" | "register"
+  const [form, setForm] = useState({ nom:"", email:"", password:"" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const setF = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const handleSubmit = async () => {
+    if(!fbReady){ setError("Connexion Firebase en cours, réessayez..."); return; }
+    if(!form.email||!form.password){ setError("Email et mot de passe obligatoires."); return; }
+    if(mode==="register"&&!form.nom){ setError("Votre prénom est obligatoire."); return; }
+    setLoading(true); setError("");
+    try {
+      if(mode==="login") {
+        const cred = await getAuth().signInWithEmailAndPassword(form.email, form.password);
+        const snap = await getDB().ref("users/"+cred.user.uid).once("value");
+        const d = snap.val()||{};
+        onAuth({ uid:cred.user.uid, email:cred.user.email, role:"patient", nom:d.nom||"" });
+      } else {
+        if(form.password.length<6){ setError("Mot de passe minimum 6 caractères."); setLoading(false); return; }
+        const cred = await getAuth().createUserWithEmailAndPassword(form.email, form.password);
+        await getDB().ref("users/"+cred.user.uid).set({
+          email: form.email, nom: form.nom, role:"patient", createdAt: Date.now()
+        });
+        onAuth({ uid:cred.user.uid, email:form.email, role:"patient", nom:form.nom });
+      }
+    } catch(e) {
+      const msgs = {
+        "auth/email-already-in-use": "Cet email est déjà utilisé. Connectez-vous.",
+        "auth/wrong-password": "Mot de passe incorrect.",
+        "auth/user-not-found": "Aucun compte avec cet email.",
+        "auth/invalid-email": "Format d'email invalide.",
+        "auth/weak-password": "Mot de passe trop faible (min. 6 caractères).",
+        "auth/network-request-failed": "Pas de connexion internet.",
+        "auth/too-many-requests": "Trop de tentatives. Réessayez dans quelques minutes.",
+      };
+      setError(msgs[e.code]||"Erreur : "+e.message);
+    }
+    setLoading(false);
+  };
+
+  // Écran de choix
+  if(mode==="choix") return(
+    <div className="main" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh",gap:16}}>
+      <div style={{textAlign:"center",marginBottom:8}}>
+        <div style={{fontSize:"3rem",marginBottom:8}}>👤</div>
+        <div style={{fontFamily:"Syne",fontWeight:800,fontSize:"1.4rem",color:"var(--navy)"}}>Mon espace patient</div>
+        <div style={{color:"var(--grey-text)",fontSize:"0.85rem",marginTop:4}}>Sauvegardez vos médicaments favoris et votre historique de recherches</div>
+      </div>
+      <button className="btn btn-primary btn-full" style={{maxWidth:320}} onClick={()=>setMode("register")}>
+        ✨ Créer mon compte gratuit
+      </button>
+      <button className="btn btn-secondary btn-full" style={{maxWidth:320}} onClick={()=>setMode("login")}>
+        🔑 J'ai déjà un compte
+      </button>
+      <button onClick={onSkip} style={{background:"none",border:"none",color:"var(--grey-text)",cursor:"pointer",fontSize:"0.82rem",marginTop:4,textDecoration:"underline"}}>
+        Continuer sans compte →
+      </button>
+    </div>
+  );
+
+  return(
+    <div className="main">
+      <div className="page-toprow mb20">
+        <button className="btn btn-secondary btn-sm" onClick={()=>setMode("choix")}>← Retour</button>
+        <div className="page-title">{mode==="login"?"Se connecter":"Créer un compte"}</div>
+      </div>
+      <div className="card form-card">
+        {error&&<div className="alert mb16" style={{background:"#FDECEA",border:"1px solid #F5C6CB",color:"var(--red)"}}><span className="alert-ico">⚠️</span><span>{error}</span></div>}
+
+        {mode==="register"&&(
+          <div className="form-group">
+            <label className="form-label">Votre prénom *</label>
+            <input className="form-input" placeholder="ex: Jean-Paul" value={form.nom} onChange={e=>setF("nom",e.target.value)}/>
+          </div>
+        )}
+        <div className="form-group">
+          <label className="form-label">Email *</label>
+          <input className="form-input" type="email" placeholder="votre@email.com" value={form.email} onChange={e=>setF("email",e.target.value)}/>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Mot de passe *</label>
+          <input className="form-input" type="password" placeholder={mode==="register"?"Minimum 6 caractères":"Votre mot de passe"} value={form.password} onChange={e=>setF("password",e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&handleSubmit()}/>
+        </div>
+        <button className="btn btn-primary btn-full" onClick={handleSubmit} disabled={loading}>
+          {loading?"⏳ Chargement...":(mode==="login"?"🔑 Se connecter":"✨ Créer mon compte")}
+        </button>
+        <div style={{textAlign:"center",marginTop:12,fontSize:"0.82rem",color:"var(--grey-text)"}}>
+          {mode==="login"?(
+            <span>Pas encore de compte ? <span style={{color:"var(--teal)",cursor:"pointer",fontWeight:600}} onClick={()=>{setMode("register");setError("");}}>S'inscrire gratuitement</span></span>
+          ):(
+            <span>Déjà un compte ? <span style={{color:"var(--teal)",cursor:"pointer",fontWeight:600}} onClick={()=>{setMode("login");setError("");}}>Se connecter</span></span>
+          )}
+        </div>
+      </div>
+      <div className="card mt16" style={{textAlign:"center",background:"#F4F9F8",border:"none"}}>
+        <div style={{fontSize:"0.78rem",color:"var(--grey-text)",lineHeight:1.6}}>
+          🔒 Vos données sont sécurisées avec Firebase.<br/>
+          Mediconline ne partage jamais vos informations.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // 🏥 COMPOSANT CARTE RÉSULTAT — avec signalement stock incorrect
 // ══════════════════════════════════════════════════════════════════════════════
 function CarteResultat({ r, i, fbReady, setPage, recherche }) {
@@ -1963,7 +2167,7 @@ export default function App() {
   const handleAuth=u=>{setUser(u);setRole("pharmacie");setPage("dashboard");};
   const handleLogout=async()=>{await getAuth().signOut();setUser(null);setRole("patient");setPage("accueil");setStock([]);};
   if(!fbReady||!authChecked)return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh"}}><div className="loading"><div className="spinner"></div> Chargement Mediconline...</div></div>;
-  const TABS_PATIENT=[{id:"accueil",label:"🏠 Accueil"},{id:"carte",label:"🗺 Carte"},{id:"garde",label:"🌙 Garde"},{id:"resultats",label:"🔍 Recherche"}];
+  const TABS_PATIENT=[{id:"accueil",label:"🏠 Accueil"},{id:"carte",label:"🗺 Carte"},{id:"garde",label:"🌙 Garde"},{id:"resultats",label:"🔍 Recherche"},{id:"compte",label:user&&user.role==="patient"?"👤 Mon compte":"👤 Compte"}];
   const TABS_PH=[{id:"dashboard",label:"📊 Dashboard"},{id:"stock",label:"📦 Stock"},{id:"ajouter",label:"➕ Ajouter"},{id:"carte",label:"🗺 Carte"},{id:"garde",label:"🌙 Garde"},{id:"profil",label:"⚙️ Profil"}];
   const tabs=role==="patient"?TABS_PATIENT:TABS_PH;
   return(
@@ -1975,6 +2179,8 @@ export default function App() {
       {role==="patient"&&page==="carte"     &&<PageCarte/>}
       {role==="patient"&&page==="garde"     &&<PageGarde setPage={setPage}/>}
       {role==="patient"&&page==="resultats" &&<ResultatsPatient recherche={recherche||"Paracétamol"} setPage={setPage}/>}
+      {role==="patient"&&page==="compte"&&!user&&<AuthPatient onAuth={u=>{setUser(u);setRole("patient");setPage("accueil");}} onSkip={()=>setPage("accueil")}/>}
+      {role==="patient"&&page==="compte"&&user&&user.role==="patient"&&<ProfilPatient user={user} onLogout={()=>{getAuth().signOut();setUser(null);setRole("patient");setPage("accueil");}}/>}
       {role==="pharmacie"&&!user            &&<AuthScreen onAuth={handleAuth}/>}
       {role==="pharmacie"&&user&&page==="dashboard"&&<Dashboard stock={stock} setPage={setPage} user={user}/>}
       {role==="pharmacie"&&user&&page==="stock"    &&<GestionStock stock={stock} user={user} setPage={setPage}/>}
