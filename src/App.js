@@ -1427,8 +1427,7 @@ function AjouterMedicament({ user, setPage }) {
         if(ext==="csv"){
           // Parse CSV
           const text=ev.target.result;
-          const lines=text.split("
-").filter(l=>l.trim());
+          const lines=text.split("\n").filter(l=>l.trim());
           const headers=lines[0].split(/[,;]/).map(h=>h.trim().toLowerCase().replace(/['"]/g,""));
           rows=lines.slice(1).map(line=>{
             const vals=line.split(/[,;]/).map(v=>v.trim().replace(/['"]/g,""));
