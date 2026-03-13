@@ -613,6 +613,89 @@ const DEMO_STOCKS = [
   },
 ];
 
+// ══════════════════════════════════════════════════════════════════════════════
+// 🛡️ SYSTÈME SIGNALEMENT STOCK INCORRECT
+// ══════════════════════════════════════════════════════════════════════════════
+async function signalerErreurStock(pharmacieId, pharmacieNom, medicamentNom, fbReady) {
+  if(!fbReady) return;
+  const ref = getDB().ref("signalements/"+pharmacieId);
+  const snap = await ref.once("value");
+  const existing = snap.val()||{};
+  // Éviter doublons : max 1 signalement par médicament par heure
+  const key = medicamentNom.replace(/[^a-zA-Z0-9]/g,"_");
+  const lastTime = existing[key]?.lastSignal||0;
+  if(Date.now()-lastTime < 3600000) return "already";
+  await ref.child(key).set({
+    medicament: medicamentNom,
+    pharmacie: pharmacieNom,
+    pharmacieId,
+    count: (existing[key]?.count||0)+1,
+    lastSignal: Date.now(),
+  });
+  // Incrémenter score crédibilité pharmacie
+  await getDB().ref("pharmacies/"+pharmacieId+"/signalements").transaction(v=>(v||0)+1);
+  return "ok";
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ⏰ NIVEAU 2 — RAPPEL AUTOMATIQUE 20H (côté pharmacie)
+// ══════════════════════════════════════════════════════════════════════════════
+function useRappelStock(user, stock) {
+  useEffect(()=>{
+    if(!user||user.role!=="pharmacie")return;
+    const checkRappel = ()=>{
+      const now = new Date();
+      const h = now.getHours();
+      // Entre 19h30 et 20h30
+      if(h>=19 && h<21) {
+        const lastRappel = localStorage.getItem("lastRappel_"+user.uid);
+        const today = now.toDateString();
+        if(lastRappel!==today) {
+          localStorage.setItem("lastRappel_"+user.uid, today);
+          // Afficher notification dans l'app
+          if(window.Notification && Notification.permission==="granted") {
+            new Notification("⏰ Mediconline — Rappel stock", {
+              body: "N'oubliez pas de mettre à jour votre stock avant de fermer !",
+              icon: "/favicon.ico"
+            });
+          }
+          // Stocker dans Firebase pour affichage dans dashboard
+          getDB().ref("rappels/"+user.uid).push({
+            message:"Rappel : mettez à jour votre stock avant de fermer !",
+            lu: false,
+            date: Date.now()
+          });
+        }
+      }
+    };
+    const interval = setInterval(checkRappel, 60000); // vérifier chaque minute
+    checkRappel(); // vérifier immédiatement
+    return ()=>clearInterval(interval);
+  },[user]);
+}
+
+function useRappelNotifications(user, fbReady) {
+  const [rappels, setRappels] = useState([]);
+  useEffect(()=>{
+    if(!user||!fbReady)return;
+    // Demander permission notifications
+    if(window.Notification && Notification.permission==="default") {
+      Notification.requestPermission();
+    }
+    const r = getDB().ref("rappels/"+user.uid);
+    r.orderByChild("lu").equalTo(false).on("value", snap=>{
+      if(snap.exists()) {
+        setRappels(Object.entries(snap.val()).map(([id,d])=>({id,...d})));
+      } else setRappels([]);
+    });
+    return()=>r.off();
+  },[user,fbReady]);
+  const marquerLu = async(id)=>{
+    await getDB().ref("rappels/"+user.uid+"/"+id).update({lu:true});
+  };
+  return {rappels, marquerLu};
+}
+
 // Calcul distance GPS (formule Haversine)
 function calculerDistance(lat1, lng1, lat2, lng2) {
   const R = 6371; // km
@@ -937,6 +1020,77 @@ function AccueilPatient({ setPage, setRecherche }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // 🔍 RÉSULTATS
 // ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// 🏥 COMPOSANT CARTE RÉSULTAT — avec signalement stock incorrect
+// ══════════════════════════════════════════════════════════════════════════════
+function CarteResultat({ r, i, fbReady, setPage, recherche }) {
+  const [signalé, setSignalé] = useState(false);
+  const [signalLoading, setSignalLoading] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const handleSignaler = async()=>{
+    if(!showConfirm){setShowConfirm(true); return;}
+    setSignalLoading(true);
+    const res = await signalerErreurStock(r.pharmacieUid||r.pharmacieId, r.pharmacieNom, recherche||r.nom, fbReady);
+    if(res==="already") alert("Vous avez déjà signalé ce médicament récemment. Merci !");
+    else setSignalé(true);
+    setSignalLoading(false);
+    setShowConfirm(false);
+  };
+
+  return(
+    <div className={"result-card"+(i===0?" best":"")} style={{animationDelay:(i*0.07)+"s"}}>
+      {/* En-tête */}
+      <div className={"result-header"+(i===0?" best":"")}>
+        <div className="ph-ico">🏥</div>
+        <div className="ph-info">
+          <div className="ph-name">{r.pharmacieNom||"Pharmacie"}</div>
+          <div className="ph-dist">
+            📍 {r.quartier||"Yaoundé"}
+            {r.distance<99&&<span style={{marginLeft:6,color:"var(--teal)",fontWeight:600}}>📏 {formatDistance(r.distance)}</span>}
+          </div>
+        </div>
+        {i===0&&<span className="best-badge">📍 La plus proche</span>}
+      </div>
+
+      {/* Corps */}
+      <div className="result-body">
+        <div>
+          <div className={"price-big"+(i!==0?" not-best":"")}>{r.prix} FCFA</div>
+          <div className="mt6">
+            <span className={"stock-tag "+(r.qte===0?"stock-out":r.qte<=10?"stock-low":"stock-ok")}>
+              {r.qte===0?"🚫 Rupture":r.qte<=10?"⚠ Stock faible ("+r.qte+")":"✓ En stock ("+r.qte+")"}
+            </span>
+          </div>
+          {r.exp&&r.exp!=="N/A"&&<div style={{fontSize:"0.72rem",color:"var(--grey-text)",marginTop:4}}>📅 Exp: {r.exp}</div>}
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
+          <div style={{display:"flex",gap:6}}>
+            {r.lat&&r.lng&&<button className={"btn btn-sm "+(i===0?"btn-primary":"btn-secondary")}
+              onClick={()=>window.open("https://www.google.com/maps/dir//"+r.lat+","+r.lng,"_blank")}>
+              🗺 Itinéraire
+            </button>}
+            {r.tel&&<button className="btn btn-secondary btn-sm" onClick={()=>window.open("tel:"+r.tel)}>📞</button>}
+          </div>
+          {/* Bouton signalement */}
+          {!signalé?(
+            <button
+              className="btn btn-sm"
+              style={{fontSize:"0.7rem",padding:"3px 10px",background:showConfirm?"#FDECEA":"transparent",color:showConfirm?"var(--red)":"var(--grey-text)",border:"1px solid "+(showConfirm?"var(--red)":"var(--grey-border)"),borderRadius:99}}
+              onClick={handleSignaler}
+              disabled={signalLoading}
+            >
+              {signalLoading?"⏳...":showConfirm?"⚠️ Confirmer le signalement":"🚩 Signaler stock incorrect"}
+            </button>
+          ):(
+            <span style={{fontSize:"0.7rem",color:"var(--teal)"}}>✅ Signalement envoyé à la pharmacie</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Seed démo au premier chargement ─────────────────────────────────────────
 function useSeedDemo(fbReady) {
   useEffect(()=>{
@@ -1016,25 +1170,19 @@ function ResultatsPatient({ recherche, setPage }) {
       <div className="result-toprow">
         <button className="btn btn-secondary btn-sm" onClick={()=>setPage("accueil")}>← Retour</button>
         <div><div className="result-title">{recherche}</div>
-        <div className="result-sub">{hasFbResults ? resultatsFirebase.length+" pharmacie(s) · Triés par prix" : "Prix de référence au Cameroun"}</div></div>
+        <div className="result-sub">{hasFbResults ? resultats.length+" pharmacie(s) trouvée(s) · Triées par proximité" : "Prix de référence au Cameroun"}</div></div>
       </div>
 
-      {/* ── RÉSULTATS FIREBASE (stocks réels) ── */}
+      {/* ── RÉSULTATS PHARMACIES ── */}
       {hasFbResults && (
         <>
-          <div className="alert alert-success mb16"><span className="alert-ico">💡</span><span>Meilleur prix : <strong>{resultatsFirebase[0].pharmacieNom}</strong> à <strong>{resultatsFirebase[0].prix} FCFA</strong></span></div>
+          <div className="alert alert-success mb16">
+            <span className="alert-ico">📍</span>
+            <span>Pharmacie la plus proche : <strong>{resultats[0].pharmacieNom}</strong> — <strong>{resultats[0].prix} FCFA</strong>{resultats[0].distance<99?" ("+formatDistance(resultats[0].distance)+" de vous)":""}</span>
+          </div>
           <div className="results-list mb24">
-            {resultatsFirebase.map((r,i)=>(
-              <div key={r.itemId} className={"result-card"+(i===0?" best":"")} style={{animationDelay:(i*0.07)+"s"}}>
-                <div className={"result-header"+(i===0?" best":"")}><div className="ph-ico">🏥</div><div className="ph-info"><div className="ph-name">{r.pharmacieNom||"Pharmacie"}</div><div className="ph-dist">📍 {r.quartier||"Yaoundé"}</div></div>{i===0&&<span className="best-badge">🏆 Meilleur prix</span>}</div>
-                <div className="result-body">
-                  <div><div className={"price-big"+(i!==0?" not-best":"")}>{r.prix} FCFA</div><div className="mt6"><span className={"stock-tag "+(r.qte<=10?"stock-low":"stock-ok")}>{r.qte<=10?"⚠ Stock faible ("+r.qte+")":"✓ En stock ("+r.qte+")"}</span></div></div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  <button className={"btn btn-sm "+(i===0?"btn-primary":"btn-secondary")} onClick={()=>setPage("carte")}>🗺 Carte</button>
-                  {r.tel&&<AppelButton tel={r.tel} size="sm"/>}
-                </div>
-                </div>
-              </div>
+            {resultats.map((r,i)=>(
+              <CarteResultat key={r.itemId} r={r} i={i} fbReady={fbReady} setPage={setPage} recherche={recherche}/>
             ))}
           </div>
         </>
@@ -1091,19 +1239,126 @@ function ResultatsPatient({ recherche, setPage }) {
 // 📊 DASHBOARD PHARMACIE
 // ══════════════════════════════════════════════════════════════════════════════
 function Dashboard({ stock, setPage, user }) {
-  const alertes=stock.filter(s=>s.qte<=10&&s.qte>0); const ruptures=stock.filter(s=>s.qte===0);
+  const fbReady=useFirebaseReady();
+  const alertes=stock.filter(s=>s.qte<=10&&s.qte>0);
+  const ruptures=stock.filter(s=>s.qte===0);
+  const [signalements,setSignalements]=useState([]);
+  const [credibilite,setCredibilite]=useState(100);
+  const {rappels,marquerLu}=useRappelNotifications(user,fbReady);
+  useRappelStock(user,stock);
+
+  useEffect(()=>{
+    if(!fbReady||!user?.uid)return;
+    // Charger signalements
+    getDB().ref("signalements/"+user.uid).on("value",snap=>{
+      if(snap.exists()){
+        const sigs=Object.values(snap.val());
+        setSignalements(sigs);
+        // Calculer crédibilité : -5 par signalement, min 0
+        const score=Math.max(0,100-sigs.reduce((a,s)=>a+(s.count||1)*5,0));
+        setCredibilite(score);
+      }
+    });
+    return()=>getDB().ref("signalements/"+user.uid).off();
+  },[fbReady,user]);
+
+  const credColor=credibilite>=80?"#2DC653":credibilite>=50?"#F4A261":"var(--red)";
+
   return(
     <div className="main">
-      <div className="dash-header"><h2>🏥 {user?.nomPharmacie||"Mon Dashboard"}</h2><p><span className="status-dot online"></span>Connecté · Firebase 🔥 · Visible par les patients de Yaoundé</p></div>
+      <div className="dash-header">
+        <h2>🏥 {user?.nomPharmacie||"Mon Dashboard"}</h2>
+        <p><span className="status-dot online"></span>Connecté · Firebase 🔥 · Visible par les patients de Yaoundé</p>
+      </div>
+
+      {/* ── NIVEAU 2 : Rappels non lus ── */}
+      {rappels.length>0&&rappels.map(rap=>(
+        <div key={rap.id} className="alert alert-warn mb16" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span><span className="alert-ico">⏰</span><strong>Rappel :</strong> {rap.message}</span>
+          <button className="btn btn-secondary btn-sm" onClick={()=>marquerLu(rap.id)}>✓ Lu</button>
+        </div>
+      ))}
+
+      {/* ── Alertes stock ── */}
       {alertes.length>0&&<div className="alert alert-warn mb16"><span className="alert-ico">⚠️</span><span><strong>Stock bas :</strong> {alertes.map(a=>a.nom).join(", ")}</span></div>}
       {ruptures.length>0&&<div className="alert mb16" style={{background:"#FDECEA",border:"1px solid #F5C6CB",color:"var(--red)"}}><span className="alert-ico">🚫</span><span><strong>Rupture :</strong> {ruptures.map(a=>a.nom).join(", ")}</span></div>}
-      <div className="grid-4 mb24">{[{ico:"💊",num:stock.length,lbl:"Médicaments",bg:"#EBF4FF"},{ico:"⚠️",num:alertes.length,lbl:"Stocks bas",bg:"#FFF4E6"},{ico:"🚫",num:ruptures.length,lbl:"Ruptures",bg:"#FDECEA"},{ico:"🔥",num:"Live",lbl:"Firebase sync",bg:"#E6FAF0"}].map((s,i)=>(
-        <div key={i} className="stat-card"><div className="stat-icon" style={{background:s.bg}}>{s.ico}</div><div className="stat-num" style={{fontSize:s.num==="Live"?"1rem":undefined}}>{s.num}</div><div className="stat-lbl">{s.lbl}</div></div>
-      ))}</div>
+
+      {/* ── Signalements patients ── */}
+      {signalements.length>0&&(
+        <div className="alert mb16" style={{background:"#FFF4E6",border:"1px solid #F4A261",color:"#8B4513"}}>
+          <span className="alert-ico">🚩</span>
+          <div>
+            <strong>{signalements.length} signalement(s) de patients</strong> — Des patients ont signalé un écart de stock :
+            {signalements.map((s,i)=>(
+              <div key={i} style={{fontSize:"0.8rem",marginTop:4}}>• {s.medicament} ({s.count} signalement{s.count>1?"s":""})</div>
+            ))}
+            <button className="btn btn-secondary btn-sm" style={{marginTop:8}} onClick={()=>setPage("stock")}>
+              📦 Mettre à jour le stock maintenant
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Stats ── */}
+      <div className="grid-4 mb24">
+        {[
+          {ico:"💊",num:stock.length,lbl:"Médicaments",bg:"#EBF4FF"},
+          {ico:"⚠️",num:alertes.length,lbl:"Stocks bas",bg:"#FFF4E6"},
+          {ico:"🚫",num:ruptures.length,lbl:"Ruptures",bg:"#FDECEA"},
+          {ico:"⭐",num:credibilite+"%",lbl:"Crédibilité",bg:"#E6FAF0",color:credColor},
+        ].map((s,i)=>(
+          <div key={i} className="stat-card">
+            <div className="stat-icon" style={{background:s.bg}}>{s.ico}</div>
+            <div className="stat-num" style={{color:s.color||undefined,fontSize:typeof s.num==="string"?"1rem":undefined}}>{s.num}</div>
+            <div className="stat-lbl">{s.lbl}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Score crédibilité détail ── */}
+      <div className="card mb20">
+        <div className="card-header">
+          <div className="card-title">⭐ Score de crédibilité : <span style={{color:credColor,fontWeight:800}}>{credibilite}%</span></div>
+        </div>
+        <div style={{background:"#F4F6F8",borderRadius:99,height:12,overflow:"hidden",margin:"8px 0"}}>
+          <div style={{background:credColor,height:"100%",width:credibilite+"%",borderRadius:99,transition:"width 0.5s"}}/>
+        </div>
+        <div style={{fontSize:"0.8rem",color:"var(--grey-text)",marginTop:6}}>
+          {credibilite>=80?"✅ Excellente crédibilité — Vos patients vous font confiance.":
+           credibilite>=50?"⚠️ Crédibilité moyenne — Mettez votre stock à jour régulièrement.":
+           "🚨 Crédibilité faible — Des patients signalent des erreurs de stock. Agissez !"}
+        </div>
+        <div style={{fontSize:"0.78rem",color:"var(--grey-text)",marginTop:8,padding:"8px 12px",background:"#F4F6F8",borderRadius:8}}>
+          💡 <strong>Comment maintenir un score élevé :</strong> Mettez votre stock à jour chaque soir avant de fermer. Chaque signalement de patient fait baisser votre score de 5 points.
+        </div>
+      </div>
+
+      {/* ── NIVEAU 3 : Connexion logiciel ── */}
+      <div className="card mb20" style={{border:"1.5px dashed var(--teal)"}}>
+        <div className="card-header">
+          <div className="card-title">🔗 Niveau 3 — Connexion automatique</div>
+          <span className="tag tag-blue">Bientôt disponible</span>
+        </div>
+        <div style={{fontSize:"0.85rem",color:"var(--grey-text)",lineHeight:1.6}}>
+          Connectez votre logiciel de caisse à Mediconline. Chaque vente mettra automatiquement à jour votre stock sans aucune action de votre part.<br/>
+          <strong style={{color:"var(--navy)"}}>Logiciels compatibles en cours d'intégration :</strong> Sage, Winpharma, Excel/CSV automatique.
+        </div>
+        <button className="btn btn-secondary btn-sm" style={{marginTop:12}}
+          onClick={()=>alert("Fonctionnalité en développement. Nous vous contacterons dès qu'elle sera disponible.")}>
+          🔔 M'avertir quand c'est disponible
+        </button>
+      </div>
+
+      {/* ── Actions rapides ── */}
       <div className="section-title">Actions rapides</div>
-      <div className="grid-4">{[{ico:"➕",lbl:"Ajouter",page:"ajouter"},{ico:"📦",lbl:"Gérer le stock",page:"stock"},{ico:"🗺",lbl:"Carte",page:"carte"},{ico:"⚙️",lbl:"Ma pharmacie",page:"profil"}].map((a,i)=>(
-        <div key={i} className="action-card" onClick={()=>setPage(a.page)}><div className="action-ico">{a.ico}</div><div className="action-lbl">{a.lbl}</div></div>
-      ))}</div>
+      <div className="grid-4">
+        {[{ico:"➕",lbl:"Ajouter",page:"ajouter"},{ico:"📦",lbl:"Gérer le stock",page:"stock"},{ico:"🗺",lbl:"Carte",page:"carte"},{ico:"⚙️",lbl:"Ma pharmacie",page:"profil"}].map((a,i)=>(
+          <div key={i} className="action-card" onClick={()=>setPage(a.page)}>
+            <div className="action-ico">{a.ico}</div>
+            <div className="action-lbl">{a.lbl}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
