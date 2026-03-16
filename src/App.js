@@ -1339,10 +1339,84 @@ function AuthPatient({ onAuth, onSkip }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // 🏥 COMPOSANT CARTE RÉSULTAT — avec signalement stock incorrect
 // ══════════════════════════════════════════════════════════════════════════════
-function CarteResultat({ r, i, fbReady, setPage, recherche }) {
-  const [signalé, setSignalé] = useState(false);
+// ── Système de réservation ───────────────────────────────────────────────────
+async function creerReservation(r, user, fbReady) {
+  if(!fbReady && !r.isDemo) return {ok:false, msg:"Pas de connexion"};
+  const uid = user?.uid || ("anon_"+Date.now());
+  const resId = "res_"+uid+"_"+Date.now();
+  const expiration = Date.now() + 2*60*60*1000; // 2h
+
+  if(r.isDemo) {
+    // Mode démo — simuler une réservation locale
+    const resDemo = JSON.parse(localStorage.getItem("mediconline_reservations")||"{}");
+    const key = r.pharmacieId+"_"+r.nom;
+    resDemo[key] = { resId, expiration, nom:r.nom, pharmacieNom:r.pharmacieNom, prix:r.prix };
+    localStorage.setItem("mediconline_reservations", JSON.stringify(resDemo));
+    return { ok:true, resId, expiration, demo:true };
+  }
+
+  // Vérifier stock disponible = qte - reservations actives
+  const resSnap = await getDB().ref("reservations/"+r.pharmacieUid+"/"+r.itemId).once("value");
+  let reserved = 0;
+  if(resSnap.exists()) {
+    const now = Date.now();
+    Object.values(resSnap.val()).forEach(res => {
+      if(res.expiration > now && res.status === "active") reserved++;
+    });
+  }
+  const dispo = (r.qte||0) - reserved;
+  if(dispo <= 0) return { ok:false, msg:"Plus de stock disponible — tous les exemplaires sont réservés." };
+
+  // Créer la réservation
+  await getDB().ref("reservations/"+r.pharmacieUid+"/"+r.itemId+"/"+resId).set({
+    userId: uid, userEmail: user?.email||"anonyme",
+    medicament: r.nom, pharmacieId: r.pharmacieUid,
+    pharmacieNom: r.pharmacieNom, prix: r.prix,
+    status: "active", createdAt: Date.now(), expiration,
+  });
+  // Notifier la pharmacie
+  await getDB().ref("rappels/"+r.pharmacieUid).push({
+    message: `🔔 Réservation : ${r.nom} — Client en route (2h)`,
+    lu: false, date: Date.now(), type: "reservation"
+  });
+  return { ok:true, resId, expiration };
+}
+
+async function getStockReel(r, fbReady) {
+  if(!fbReady || r.isDemo) return r.qte;
+  try {
+    const resSnap = await getDB().ref("reservations/"+r.pharmacieUid+"/"+r.itemId).once("value");
+    if(!resSnap.exists()) return r.qte;
+    const now = Date.now();
+    let reserved = 0;
+    Object.values(resSnap.val()).forEach(res => {
+      if(res.expiration > now && res.status === "active") reserved++;
+    });
+    return Math.max(0, (r.qte||0) - reserved);
+  } catch(e) { return r.qte; }
+}
+
+function CarteResultat({ r, i, fbReady, setPage, recherche, user }) {
+  const [signalé, setSignalé]         = useState(false);
   const [signalLoading, setSignalLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [stockDispo, setStockDispo]   = useState(r.qte);
+  const [reserved, setReserved]       = useState(false);
+  const [resLoading, setResLoading]   = useState(false);
+  const [resInfo, setResInfo]         = useState(null);
+  const [showResModal, setShowResModal] = useState(false);
+
+  // Calculer le vrai stock disponible (stock - réservations actives)
+  useEffect(()=>{
+    if(r.isDemo){ setStockDispo(r.qte); return; }
+    getStockReel(r, fbReady).then(setStockDispo);
+    // Vérifier si déjà réservé par cet utilisateur
+    const resDemo = JSON.parse(localStorage.getItem("mediconline_reservations")||"{}");
+    const key = (r.pharmacieUid||r.pharmacieId)+"_"+r.nom;
+    if(resDemo[key] && resDemo[key].expiration > Date.now()) {
+      setReserved(true); setResInfo(resDemo[key]);
+    }
+  },[fbReady, r.pharmacieUid, r.qte]);
 
   const handleSignaler = async()=>{
     if(!showConfirm){setShowConfirm(true); return;}
@@ -1350,11 +1424,96 @@ function CarteResultat({ r, i, fbReady, setPage, recherche }) {
     const res = await signalerErreurStock(r.pharmacieUid||r.pharmacieId, r.pharmacieNom, recherche||r.nom, fbReady);
     if(res==="already") alert("Vous avez déjà signalé ce médicament récemment. Merci !");
     else setSignalé(true);
-    setSignalLoading(false);
-    setShowConfirm(false);
+    setSignalLoading(false); setShowConfirm(false);
   };
 
+  const handleReserver = async()=>{
+    if(reserved){ setShowResModal(true); return; }
+    setResLoading(true);
+    const result = await creerReservation(r, user, fbReady);
+    if(result.ok) {
+      setReserved(true);
+      setResInfo(result);
+      setStockDispo(s => Math.max(0, s-1));
+      // Sauvegarder en local
+      const resLocal = JSON.parse(localStorage.getItem("mediconline_reservations")||"{}");
+      const key = (r.pharmacieUid||r.pharmacieId)+"_"+r.nom;
+      resLocal[key] = { ...result, nom:r.nom, pharmacieNom:r.pharmacieNom, prix:r.prix };
+      localStorage.setItem("mediconline_reservations", JSON.stringify(resLocal));
+      setShowResModal(true);
+    } else {
+      alert(result.msg || "Impossible de réserver. Réessayez.");
+    }
+    setResLoading(false);
+  };
+
+  const heuresRestantes = resInfo ? Math.max(0, Math.round((resInfo.expiration - Date.now())/3600000)) : 0;
+  const minutesRestantes = resInfo ? Math.max(0, Math.round(((resInfo.expiration - Date.now())%3600000)/60000)) : 0;
+
+  // Couleur stock
+  const stockColor = stockDispo===0?"#DC2626":stockDispo<=5?"#D97706":stockDispo<=15?"#F59E0B":"#059669";
+  const stockBg    = stockDispo===0?"#FEF2F2":stockDispo<=5?"#FFF7ED":stockDispo<=15?"#FFFBEB":"#F0FDF4";
+  const stockLabel = stockDispo===0?"🚫 Rupture de stock":
+                     stockDispo<=5?`⚠️ Presque épuisé — ${stockDispo} unité${stockDispo>1?"s":""} restante${stockDispo>1?"s":""}`:
+                     stockDispo<=15?`📦 Stock limité — ${stockDispo} unités disponibles`:
+                     `✅ En stock — ${stockDispo} unités disponibles`;
+
   return(
+    <>
+    {/* Modal confirmation réservation */}
+    {showResModal&&(
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+        <div style={{background:"white",borderRadius:16,padding:24,maxWidth:360,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+          {reserved&&resInfo?(
+            <>
+              <div style={{textAlign:"center",fontSize:"2.5rem",marginBottom:8}}>🎉</div>
+              <div style={{fontFamily:"Syne",fontWeight:800,fontSize:"1.1rem",color:"#0D2B3E",textAlign:"center",marginBottom:4}}>
+                Réservation confirmée !
+              </div>
+              <div style={{textAlign:"center",color:"#0A7B6C",fontSize:"0.85rem",marginBottom:16}}>
+                {r.nom}
+              </div>
+              <div style={{background:"#F0FDF4",borderRadius:12,padding:16,marginBottom:16}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                  <span style={{fontSize:"0.82rem",color:"#6B7280"}}>Pharmacie</span>
+                  <span style={{fontSize:"0.82rem",fontWeight:700,color:"#0D2B3E"}}>{r.pharmacieNom}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                  <span style={{fontSize:"0.82rem",color:"#6B7280"}}>Prix</span>
+                  <span style={{fontSize:"0.82rem",fontWeight:700,color:"#0A7B6C"}}>{r.prix} FCFA</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between"}}>
+                  <span style={{fontSize:"0.82rem",color:"#6B7280"}}>Réservé pendant</span>
+                  <span style={{fontSize:"0.82rem",fontWeight:700,color:"#D97706"}}>
+                    ⏱ {heuresRestantes}h{minutesRestantes>0?` ${minutesRestantes}min`:""}
+                  </span>
+                </div>
+              </div>
+              <div style={{background:"#FFF7ED",borderRadius:8,padding:12,marginBottom:16,fontSize:"0.78rem",color:"#92400E"}}>
+                ⚠️ <strong>Important :</strong> Votre médicament est réservé pour <strong>2 heures</strong>. 
+                Rendez-vous à la pharmacie dans ce délai. Passé ce temps, la réservation est annulée automatiquement.
+              </div>
+              {r.tel&&(
+                <button onClick={()=>window.open("tel:"+r.tel)} style={{width:"100%",background:"#0A7B6C",color:"white",border:"none",padding:"12px",borderRadius:99,fontWeight:700,cursor:"pointer",marginBottom:8,fontFamily:"Mulish",fontSize:"0.9rem"}}>
+                  📞 Appeler la pharmacie
+                </button>
+              )}
+              {r.lat&&r.lng&&(
+                <button onClick={()=>window.open("https://www.google.com/maps/dir//"+r.lat+","+r.lng,"_blank")} style={{width:"100%",background:"#0D2B3E",color:"white",border:"none",padding:"12px",borderRadius:99,fontWeight:700,cursor:"pointer",marginBottom:8,fontFamily:"Mulish",fontSize:"0.9rem"}}>
+                  🗺 Y aller maintenant
+                </button>
+              )}
+              <button onClick={()=>setShowResModal(false)} style={{width:"100%",background:"#F3F4F6",color:"#6B7280",border:"none",padding:"10px",borderRadius:99,cursor:"pointer",fontFamily:"Mulish",fontSize:"0.85rem"}}>
+                Fermer
+              </button>
+            </>
+          ):(
+            <button onClick={()=>setShowResModal(false)}>Fermer</button>
+          )}
+        </div>
+      </div>
+    )}
+
     <div className={"result-card"+(i===0?" best":"")} style={{animationDelay:(i*0.07)+"s"}}>
       {/* En-tête */}
       <div className={"result-header"+(i===0?" best":"")}>
@@ -1369,41 +1528,93 @@ function CarteResultat({ r, i, fbReady, setPage, recherche }) {
         {i===0&&<span className="best-badge">📍 La plus proche</span>}
       </div>
 
-      {/* Corps */}
-      <div className="result-body">
-        <div>
+      {/* Prix + Stock */}
+      <div style={{padding:"12px 16px",borderBottom:"1px solid var(--grey-border)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
           <div className={"price-big"+(i!==0?" not-best":"")}>{r.prix} FCFA</div>
-          <div className="mt6">
-            <span className={"stock-tag "+(r.qte===0?"stock-out":r.qte<=10?"stock-low":"stock-ok")}>
-              {r.qte===0?"🚫 Rupture":r.qte<=10?"⚠ Stock faible ("+r.qte+")":"✓ En stock ("+r.qte+")"}
-            </span>
+          {/* Badge stock proéminent */}
+          <div style={{
+            background:stockBg,color:stockColor,
+            padding:"6px 14px",borderRadius:99,
+            fontSize:"0.78rem",fontWeight:800,
+            fontFamily:"Mulish",border:"1.5px solid "+stockColor,
+            display:"flex",alignItems:"center",gap:4
+          }}>
+            {stockLabel}
           </div>
-          {r.exp&&r.exp!=="N/A"&&<div style={{fontSize:"0.72rem",color:"var(--grey-text)",marginTop:4}}>📅 Exp: {r.exp}</div>}
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
-          <div style={{display:"flex",gap:6}}>
-            {r.lat&&r.lng&&<button className={"btn btn-sm "+(i===0?"btn-primary":"btn-secondary")}
+        {/* Barre de stock visuelle */}
+        {stockDispo>0&&(
+          <div style={{marginTop:10}}>
+            <div style={{height:6,background:"#E5E7EB",borderRadius:99,overflow:"hidden"}}>
+              <div style={{
+                height:"100%",borderRadius:99,
+                background:stockColor,
+                width:Math.min(100, (stockDispo/Math.max(stockDispo,50))*100)+"%",
+                transition:"width 0.5s"
+              }}/>
+            </div>
+            <div style={{fontSize:"0.7rem",color:"var(--grey-text)",marginTop:3}}>
+              {stockDispo} unité{stockDispo>1?"s":""} non réservée{stockDispo>1?"s":""} · Mis à jour {r.updatedAt?Math.round((Date.now()-r.updatedAt)/3600000)+"h":"récemment"}
+            </div>
+          </div>
+        )}
+        {r.exp&&r.exp!=="N/A"&&<div style={{fontSize:"0.72rem",color:"var(--grey-text)",marginTop:4}}>📅 Expiration : {r.exp}</div>}
+      </div>
+
+      {/* Actions */}
+      <div style={{padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {r.lat&&r.lng&&(
+            <button className={"btn btn-sm "+(i===0?"btn-primary":"btn-secondary")}
               onClick={()=>window.open("https://www.google.com/maps/dir//"+r.lat+","+r.lng,"_blank")}>
               🗺 Itinéraire
-            </button>}
-            {r.tel&&<button className="btn btn-secondary btn-sm" onClick={()=>window.open("tel:"+r.tel)}>📞</button>}
-          </div>
-          {/* Bouton signalement */}
-          {!signalé?(
-            <button
-              className="btn btn-sm"
-              style={{fontSize:"0.7rem",padding:"3px 10px",background:showConfirm?"#FDECEA":"transparent",color:showConfirm?"var(--red)":"var(--grey-text)",border:"1px solid "+(showConfirm?"var(--red)":"var(--grey-border)"),borderRadius:99}}
-              onClick={handleSignaler}
-              disabled={signalLoading}
-            >
-              {signalLoading?"⏳...":showConfirm?"⚠️ Confirmer le signalement":"🚩 Signaler stock incorrect"}
             </button>
-          ):(
-            <span style={{fontSize:"0.7rem",color:"var(--teal)"}}>✅ Signalement envoyé à la pharmacie</span>
           )}
+          {r.tel&&<button className="btn btn-secondary btn-sm" onClick={()=>window.open("tel:"+r.tel)}>📞 Appeler</button>}
         </div>
+
+        {/* Bouton RÉSERVER — le cœur de Mediconline */}
+        {stockDispo>0&&(
+          <button
+            onClick={handleReserver}
+            disabled={resLoading}
+            style={{
+              background: reserved?"#059669":"#0A7B6C",
+              color:"white",border:"none",
+              padding:"8px 18px",borderRadius:99,
+              fontWeight:800,cursor:"pointer",
+              fontSize:"0.82rem",fontFamily:"Mulish",
+              display:"flex",alignItems:"center",gap:6,
+              boxShadow: reserved?"none":"0 2px 8px rgba(10,123,108,0.3)",
+              transition:"all 0.2s",
+              opacity: resLoading?0.7:1,
+            }}
+          >
+            {resLoading?"⏳ Réservation..."
+              :reserved?`✅ Réservé (${heuresRestantes}h restantes)`
+              :"🔒 Réserver — 2h gratuit"}
+          </button>
+        )}
+      </div>
+
+      {/* Signalement */}
+      <div style={{padding:"4px 16px 10px",borderTop:"1px solid var(--grey-border)"}}>
+        {!signalé?(
+          <button
+            style={{fontSize:"0.7rem",padding:"2px 8px",background:showConfirm?"#FDECEA":"transparent",
+              color:showConfirm?"var(--red)":"var(--grey-text)",
+              border:"1px solid "+(showConfirm?"var(--red)":"var(--grey-border)"),
+              borderRadius:99,cursor:"pointer"}}
+            onClick={handleSignaler} disabled={signalLoading}>
+            {signalLoading?"⏳...":showConfirm?"⚠️ Confirmer le signalement":"🚩 Signaler stock incorrect"}
+          </button>
+        ):(
+          <span style={{fontSize:"0.7rem",color:"var(--teal)"}}>✅ Signalement envoyé à la pharmacie</span>
+        )}
       </div>
     </div>
+    </>
   );
 }
 
@@ -1437,7 +1648,7 @@ function useSeedDemo(fbReady) {
   },[fbReady]);
 }
 
-function ResultatsPatient({ recherche, setPage, isDemoMode }) {
+function ResultatsPatient({ recherche, setPage, isDemoMode, user }) {
   const fbReady=useFirebaseReady();
   useSeedDemo(fbReady);
   const [resultats,setResultats]=useState([]);
@@ -2373,7 +2584,7 @@ export default function App() {
       {role==="patient"&&page==="accueil"   &&<AccueilPatient setPage={setPage} setRecherche={setRecherche} isDemoMode={isDemoMode}/>}
       {role==="patient"&&page==="carte"     &&<PageCarte/>}
       {role==="patient"&&page==="garde"     &&<PageGarde setPage={setPage}/>}
-      {role==="patient"&&page==="resultats" &&<ResultatsPatient recherche={recherche||"Paracétamol"} setPage={setPage} isDemoMode={isDemoMode}/>}
+      {role==="patient"&&page==="resultats" &&<ResultatsPatient recherche={recherche||"Paracétamol"} setPage={setPage} isDemoMode={isDemoMode} user={user}/>}
       {role==="patient"&&page==="compte"&&!user&&<AuthPatient onAuth={u=>{setUser(u);setRole("patient");setPage("accueil");}} onSkip={()=>setPage("accueil")}/>}
       {role==="patient"&&page==="compte"&&user&&user.role==="patient"&&<ProfilPatient user={user} onLogout={()=>{getAuth().signOut();setUser(null);setRole("patient");setPage("accueil");}}/>}
       {role==="pharmacie"&&!user            &&<AuthScreen onAuth={handleAuth}/>}
