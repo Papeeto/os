@@ -2993,7 +2993,7 @@ function PageAdmin({ setPage }) {
 
     // Suppression via Firebase REST API avec la clé secrète (contourne les règles)
     const BASE = "https://mediconline-15d7f-default-rtdb.firebaseio.com";
-    const SECRET = ""; // laisser vide = utilise les règles publiques actuelles
+    const SECRET = "mJzQHDzvvI3ibsk6CTD5byTRKrH7jQKhDxQ7GNDa";
 
     const supprFB = async(chemin)=>{
       const url = BASE+"/"+chemin+".json"+(SECRET?"?auth="+SECRET:"");
