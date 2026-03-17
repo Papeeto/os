@@ -1198,20 +1198,33 @@ function AuthScreen({ onAuth }) {
       await getDB().ref("users/"+uid).set({
         email, role:"pharmacie", nom:nom.trim(), tel:tel.trim(), createdAt:Date.now()
       });
-      // Créer la fiche pharmacie — SANS STOCK DEMO
+      // Créer la fiche pharmacie — statut "en_attente" par défaut
       await getDB().ref("pharmacies/"+uid).set({
         nom:       nom.trim(),
         quartier:  quartier,
         adresse:   adresse.trim()||(quartier+", Yaoundé"),
         tel:       tel.trim(),
-        ouvert:    true,
+        ouvert:    false,
         adminUid:  uid,
         lat:       coords.lat,
         lng:       coords.lng,
         createdAt: Date.now(),
+        statut:    "en_attente",   // en_attente | verifie | suspendu
+        verified:  false,
         isReal:    true,
       });
-      onAuth({uid, email, role:"pharmacie", nomPharmacie:nom.trim(), tel:tel.trim()});
+      // Notifier Bryn (admin) qu'une nouvelle pharmacie attend validation
+      await getDB().ref("admin_notifications").push({
+        type:      "nouvelle_pharmacie",
+        pharmacieId: uid,
+        nom:       nom.trim(),
+        quartier:  quartier,
+        tel:       tel.trim(),
+        email:     email,
+        date:      Date.now(),
+        lu:        false,
+      });
+      onAuth({uid, email, role:"pharmacie", nomPharmacie:nom.trim(), tel:tel.trim(), statut:"en_attente"});
     }catch(e){ setError(ERREURS_FR[e.code]||"Erreur : "+e.message); }
     setLoading(false);
   };
@@ -1973,8 +1986,20 @@ function ResultatsPatient({ recherche, setPage, isDemoMode, user }) {
     if(!fbReady)return;
     getDB().ref("stock").once("value").then(snap=>{
       const found=[];
-      if(snap.exists()){
+      // Charger statuts pharmacies vérifiées
+    const phSnap = await getDB().ref("pharmacies").once("value");
+    const statutsVerif = {};
+    if(phSnap.exists()){
+      Object.entries(phSnap.val()).forEach(([uid,ph])=>{
+        statutsVerif[uid] = ph.statut||"en_attente";
+      });
+    }
+
+    if(snap.exists()){
         Object.entries(snap.val()).forEach(([uid,items])=>{
+          // Masquer les pharmacies non vérifiées aux patients
+          if(statutsVerif[uid]==="suspendu") return;
+          if(statutsVerif[uid]==="en_attente" && !uid.startsWith("demo_ph_")) return;
           Object.entries(items).forEach(([itemId,item])=>{
             // Recherche floue : correspondance directe OU faute d'orthographe tolérée
             const scoreItem = scoreFuzzy(recherche, {nom:item.nom||"",cat:item.cat||""});
@@ -2089,6 +2114,23 @@ function Dashboard({ stock, setPage, user }) {
         setSignalements(sigs);
         const score=Math.max(0,100-sigs.reduce((a,s)=>a+(s.count||1)*5,0));
         setCredibilite(score);
+        // Suspension automatique si crédibilité < 40%
+        if(score < 40 && fbReady && user?.uid){
+          getDB().ref("pharmacies/"+user.uid+"/statut").once("value").then(snap=>{
+            if(snap.val()==="verifie"){
+              getDB().ref("pharmacies/"+user.uid).update({statut:"suspendu"});
+              getDB().ref("admin_notifications").push({
+                type:"suspension_automatique",
+                pharmacieId:user.uid,
+                nom:user.nomPharmacie,
+                score,
+                date:Date.now(),
+                lu:false,
+                message:"Suspension automatique — Score crédibilité : "+score+"%"
+              });
+            }
+          });
+        }
       }
     });
     // Charger réservations actives
@@ -2113,11 +2155,61 @@ function Dashboard({ stock, setPage, user }) {
 
   const credColor=credibilite>=80?"#2DC653":credibilite>=50?"#F4A261":"var(--red)";
 
+  const [statutPharmacie, setStatutPharmacie] = useState("en_attente");
+  useEffect(()=>{
+    if(!fbReady||!user?.uid) return;
+    getDB().ref("pharmacies/"+user.uid+"/statut").on("value", snap=>{
+      setStatutPharmacie(snap.val()||"en_attente");
+    });
+    return()=>getDB().ref("pharmacies/"+user.uid+"/statut").off();
+  },[fbReady,user]);
+
   return(
     <div className="main">
+      {/* ── Bandeau statut validation ── */}
+      {statutPharmacie==="en_attente"&&(
+        <div style={{background:"#FFFBEB",border:"2px solid #F59E0B",borderRadius:12,padding:"16px 20px",marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
+            <span style={{fontSize:"1.8rem"}}>⏳</span>
+            <div>
+              <div style={{fontFamily:"Syne",fontWeight:800,fontSize:"1rem",color:"#92400E"}}>
+                Compte en attente de validation
+              </div>
+              <div style={{fontSize:"0.83rem",color:"#78350F",marginTop:4,lineHeight:1.6}}>
+                Votre pharmacie est en cours de vérification par l'équipe Mediconline.<br/>
+                <strong>Votre stock n'est pas encore visible par les patients.</strong><br/>
+                Délai de validation : 24 à 48 heures.<br/>
+                Pour accélérer : envoyez une photo de votre façade ou votre numéro d'autorisation au <strong>+237 6XX XXX XXX</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {statutPharmacie==="suspendu"&&(
+        <div style={{background:"#FEF2F2",border:"2px solid #DC2626",borderRadius:12,padding:"16px 20px",marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
+            <span style={{fontSize:"1.8rem"}}>🚫</span>
+            <div>
+              <div style={{fontFamily:"Syne",fontWeight:800,fontSize:"1rem",color:"#991B1B"}}>
+                Compte suspendu
+              </div>
+              <div style={{fontSize:"0.83rem",color:"#7F1D1D",marginTop:4,lineHeight:1.6}}>
+                Votre compte a été suspendu suite à des signalements de patients ou une violation des conditions d'utilisation.<br/>
+                Contactez le support Mediconline pour régulariser : <strong>support@mediconline.cm</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {statutPharmacie==="verifie"&&(
+        <div style={{background:"#F0FDF4",border:"1px solid #059669",borderRadius:8,padding:"8px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+          <span>✅</span>
+          <span style={{fontSize:"0.82rem",color:"#065F46",fontWeight:600}}>Pharmacie vérifiée — Votre stock est visible par tous les patients de Yaoundé</span>
+        </div>
+      )}
       <div className="dash-header">
         <h2>🏥 {user?.nomPharmacie||"Mon Dashboard"}</h2>
-        <p><span className="status-dot online"></span>Connecté · Firebase 🔥 · Visible par les patients de Yaoundé</p>
+        <p><span className="status-dot online"></span>Connecté · Firebase 🔥 · {statutPharmacie==="verifie"?"Visible par les patients":"En attente de validation"}</p>
       </div>
 
       {/* ── NIVEAU 2 : Rappels non lus ── */}
@@ -2833,6 +2925,60 @@ function PageAdmin({ setPage }) {
   const [pharmacies,setPharmacies]=useState([]);
   const [stats,setStats]=useState({total:0,ouvertes:0,totalItems:0});
   const [mdp,setMdp]=useState(""); const [auth,setAuth]=useState(false);
+  const [notifications,setNotifications]=useState([]);
+  const [onglet,setOnglet]=useState("validation"); // "validation" | "toutes"
+  const [actionLoading,setActionLoading]=useState("");
+
+  // Charger notifications admin
+  useEffect(()=>{
+    if(!fbReady||!auth) return;
+    getDB().ref("admin_notifications").orderByChild("lu").equalTo(false).on("value",snap=>{
+      if(snap.exists()) setNotifications(Object.entries(snap.val()).map(([k,v])=>({...v,key:k})));
+      else setNotifications([]);
+    });
+    return()=>getDB().ref("admin_notifications").off();
+  },[fbReady,auth]);
+
+  const validerPharmacie = async(pharmacieId, nom)=>{
+    setActionLoading(pharmacieId);
+    await getDB().ref("pharmacies/"+pharmacieId).update({
+      statut:"verifie", verified:true, verifiedAt:Date.now(), ouvert:true
+    });
+    // Marquer notification lue
+    const notif = notifications.find(n=>n.pharmacieId===pharmacieId);
+    if(notif) await getDB().ref("admin_notifications/"+notif.key).update({lu:true});
+    // Envoyer rappel de bienvenue à la pharmacie
+    await getDB().ref("rappels/"+pharmacieId).push({
+      message:"🎉 Votre pharmacie a été vérifiée et est maintenant visible par tous les patients de Yaoundé !",
+      lu:false, date:Date.now(), type:"validation"
+    });
+    setActionLoading("");
+  };
+
+  const rejeterPharmacie = async(pharmacieId)=>{
+    setActionLoading(pharmacieId);
+    const raison = window.prompt("Raison du rejet (sera transmise à la pharmacie) :");
+    if(!raison) { setActionLoading(""); return; }
+    await getDB().ref("pharmacies/"+pharmacieId).update({
+      statut:"suspendu", verifiedAt:Date.now()
+    });
+    await getDB().ref("rappels/"+pharmacieId).push({
+      message:"⚠️ Votre compte n'a pas pu être validé : "+raison+". Contactez support@mediconline.cm",
+      lu:false, date:Date.now(), type:"rejet"
+    });
+    const notif = notifications.find(n=>n.pharmacieId===pharmacieId);
+    if(notif) await getDB().ref("admin_notifications/"+notif.key).update({lu:true});
+    setActionLoading("");
+  };
+
+  const suspendre = async(pharmacieId)=>{
+    if(!window.confirm("Suspendre cette pharmacie ?")) return;
+    await getDB().ref("pharmacies/"+pharmacieId).update({statut:"suspendu"});
+  };
+
+  const reactiver = async(pharmacieId)=>{
+    await getDB().ref("pharmacies/"+pharmacieId).update({statut:"verifie"});
+  };
 
   useEffect(()=>{
     if(!fbReady||!auth)return;
@@ -2890,33 +3036,117 @@ function PageAdmin({ setPage }) {
           </div>
         ))}
       </div>
-      <div className="card">
-        <div className="card-header"><div className="card-title">Toutes les pharmacies inscrites</div></div>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Pharmacie</th><th>Quartier</th><th>Téléphone</th><th>Médicaments</th><th>Statut</th><th>Inscrite le</th></tr></thead>
-            <tbody>
-              {pharmacies.map(ph=>(
-                <tr key={ph.uid}>
-                  <td className="td-name">{ph.isDemo?"🔵 ":""}{ph.nom}</td>
-                  <td>📍 {ph.quartier}</td>
-                  <td>{ph.tel||"—"}</td>
-                  <td style={{fontWeight:700,color:"var(--teal)"}}>{ph.nbMeds} méd.</td>
-                  <td><span className={"stock-tag "+(ph.ouvert!==false?"stock-ok":"stock-out")}>{ph.ouvert!==false?"Ouverte":"Fermée"}</span></td>
-                  <td style={{fontSize:"0.75rem",color:"var(--grey-text)"}}>{ph.createdAt?new Date(ph.createdAt).toLocaleDateString("fr-FR"):"—"}</td>
-                </tr>
-              ))}
-              {pharmacies.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"var(--grey-text)"}}>Chargement...</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        {pharmacies.filter(p=>!p.isDemo).length>0&&(
-          <div className="alert alert-success mt16">
-            <span className="alert-ico">🎉</span>
-            <span><strong>{pharmacies.filter(p=>!p.isDemo).length} vraie(s) pharmacie(s)</strong> inscrite(s) sur Mediconline !</span>
-          </div>
-        )}
+      {/* ── Onglets Admin ── */}
+      <div style={{display:"flex",gap:4,marginBottom:16,background:"#F3F4F6",padding:4,borderRadius:10}}>
+        {[
+          {id:"validation", label:"⏳ À valider", count: notifications.length},
+          {id:"toutes",     label:"🏥 Toutes les pharmacies", count: pharmacies.filter(p=>!p.isDemo).length},
+        ].map(t=>(
+          <button key={t.id} onClick={()=>setOnglet(t.id)} style={{
+            flex:1,padding:"8px",borderRadius:8,border:"none",cursor:"pointer",
+            background:onglet===t.id?"white":"transparent",
+            fontWeight:700,fontSize:"0.82rem",fontFamily:"Mulish",
+            color:onglet===t.id?"var(--navy)":"var(--grey-text)",
+            boxShadow:onglet===t.id?"0 1px 4px rgba(0,0,0,0.1)":"none",
+          }}>
+            {t.label} {t.count>0&&<span style={{background:onglet===t.id?"var(--teal)":"#9CA3AF",color:"white",borderRadius:99,padding:"1px 7px",fontSize:"0.72rem",marginLeft:4}}>{t.count}</span>}
+          </button>
+        ))}
       </div>
+
+      {/* ── Onglet validation ── */}
+      {onglet==="validation"&&(
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">⏳ Pharmacies en attente de validation</div>
+          </div>
+          {notifications.length===0?(
+            <div style={{textAlign:"center",padding:"32px 0",color:"var(--grey-text)"}}>
+              ✅ Aucune pharmacie en attente — tout est à jour !
+            </div>
+          ):(
+            notifications.map(notif=>(
+              <div key={notif.key} style={{border:"1px solid #FDE68A",borderRadius:10,padding:"16px",marginBottom:12,background:"#FFFBEB"}}>
+                <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:"0.95rem",color:"var(--navy)"}}>{notif.nom}</div>
+                    <div style={{fontSize:"0.8rem",color:"var(--grey-text)",marginTop:2}}>
+                      📍 {notif.quartier} · 📞 {notif.tel||"Non renseigné"} · 📧 {notif.email}
+                    </div>
+                    <div style={{fontSize:"0.75rem",color:"var(--grey-text)",marginTop:2}}>
+                      Inscrite le {new Date(notif.date).toLocaleDateString("fr-FR")} à {new Date(notif.date).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <button
+                      onClick={()=>validerPharmacie(notif.pharmacieId, notif.nom)}
+                      disabled={actionLoading===notif.pharmacieId}
+                      style={{background:"#059669",color:"white",border:"none",padding:"8px 16px",borderRadius:99,fontWeight:700,cursor:"pointer",fontSize:"0.82rem",fontFamily:"Mulish"}}>
+                      {actionLoading===notif.pharmacieId?"⏳...":"✅ Valider"}
+                    </button>
+                    <button
+                      onClick={()=>rejeterPharmacie(notif.pharmacieId)}
+                      disabled={actionLoading===notif.pharmacieId}
+                      style={{background:"#DC2626",color:"white",border:"none",padding:"8px 16px",borderRadius:99,fontWeight:700,cursor:"pointer",fontSize:"0.82rem",fontFamily:"Mulish"}}>
+                      🚫 Rejeter
+                    </button>
+                  </div>
+                </div>
+                <div style={{marginTop:10,background:"rgba(0,0,0,0.04)",borderRadius:6,padding:"8px 12px",fontSize:"0.78rem",color:"#78350F"}}>
+                  💡 Avant de valider : appelez le <strong>{notif.tel||"numéro non renseigné"}</strong> pour confirmer que c'est une vraie pharmacie.
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── Onglet toutes pharmacies ── */}
+      {onglet==="toutes"&&(
+        <div className="card">
+          <div className="card-header"><div className="card-title">🏥 Toutes les pharmacies inscrites</div></div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Pharmacie</th><th>Quartier</th><th>Téléphone</th>
+                  <th>Médicaments</th><th>Statut</th><th>Inscrite le</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pharmacies.filter(p=>!p.isDemo).map(ph=>(
+                  <tr key={ph.uid}>
+                    <td className="td-name">{ph.nom}</td>
+                    <td>📍 {ph.quartier}</td>
+                    <td>{ph.tel||"—"}</td>
+                    <td style={{fontWeight:700,color:"var(--teal)"}}>{ph.nbMeds} méd.</td>
+                    <td>
+                      <span style={{
+                        padding:"3px 10px",borderRadius:99,fontSize:"0.72rem",fontWeight:700,
+                        background:ph.statut==="verifie"?"#D1FAE5":ph.statut==="suspendu"?"#FEE2E2":"#FEF3C7",
+                        color:ph.statut==="verifie"?"#065F46":ph.statut==="suspendu"?"#991B1B":"#92400E"
+                      }}>
+                        {ph.statut==="verifie"?"✅ Vérifiée":ph.statut==="suspendu"?"🚫 Suspendue":"⏳ En attente"}
+                      </span>
+                    </td>
+                    <td style={{fontSize:"0.75rem",color:"var(--grey-text)"}}>{ph.createdAt?new Date(ph.createdAt).toLocaleDateString("fr-FR"):"—"}</td>
+                    <td>
+                      <div style={{display:"flex",gap:4"}}>
+                        {ph.statut!=="verifie"&&<button onClick={()=>validerPharmacie(ph.uid,ph.nom)} style={{background:"#059669",color:"white",border:"none",padding:"3px 8px",borderRadius:6,cursor:"pointer",fontSize:"0.72rem"}}>✅</button>}
+                        {ph.statut!=="suspendu"&&<button onClick={()=>suspendre(ph.uid)} style={{background:"#DC2626",color:"white",border:"none",padding:"3px 8px",borderRadius:6,cursor:"pointer",fontSize:"0.72rem"}}>🚫</button>}
+                        {ph.statut==="suspendu"&&<button onClick={()=>reactiver(ph.uid)} style={{background:"#0A7B6C",color:"white",border:"none",padding:"3px 8px",borderRadius:6,cursor:"pointer",fontSize:"0.72rem"}}>↺</button>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {pharmacies.filter(p=>!p.isDemo).length===0&&(
+                  <tr><td colSpan={7} style={{textAlign:"center",padding:24,color:"var(--grey-text)"}}>Aucune pharmacie inscrite pour l'instant</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
