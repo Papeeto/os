@@ -1984,17 +1984,18 @@ function ResultatsPatient({ recherche, setPage, isDemoMode, user }) {
 
     // ── MODE RÉEL (Firebase) ───────────────────────────────────────────────
     if(!fbReady)return;
-    getDB().ref("stock").once("value").then(snap=>{
-      const found=[];
-      // Charger statuts pharmacies vérifiées
-    const phSnap = await getDB().ref("pharmacies").once("value");
+    const [phSnap, snap] = await Promise.all([
+      getDB().ref("pharmacies").once("value"),
+      getDB().ref("stock").once("value")
+    ]);
     const statutsVerif = {};
     if(phSnap.exists()){
       Object.entries(phSnap.val()).forEach(([uid,ph])=>{
         statutsVerif[uid] = ph.statut||"en_attente";
       });
     }
-
+    {
+      const found=[];
     if(snap.exists()){
         Object.entries(snap.val()).forEach(([uid,items])=>{
           // Masquer les pharmacies non vérifiées aux patients
@@ -3169,7 +3170,7 @@ function PageAdmin({ setPage }) {
                     </td>
                     <td style={{fontSize:"0.75rem",color:"var(--grey-text)"}}>{ph.createdAt?new Date(ph.createdAt).toLocaleDateString("fr-FR"):"—"}</td>
                     <td>
-                      <div style={{display:"flex",gap:4"}}>
+                      <div style={{display:"flex",gap:4}}>
                         {ph.statut!=="verifie"&&<button onClick={()=>validerPharmacie(ph.uid,ph.nom)} style={{background:"#059669",color:"white",border:"none",padding:"3px 8px",borderRadius:6,cursor:"pointer",fontSize:"0.72rem"}}>✅</button>}
                         {ph.statut!=="suspendu"&&<button onClick={()=>suspendre(ph.uid)} style={{background:"#F59E0B",color:"white",border:"none",padding:"3px 8px",borderRadius:6,cursor:"pointer",fontSize:"0.72rem"}}>🚫</button>}
                         {ph.statut==="suspendu"&&<button onClick={()=>reactiver(ph.uid)} style={{background:"#0A7B6C",color:"white",border:"none",padding:"3px 8px",borderRadius:6,cursor:"pointer",fontSize:"0.72rem"}}>↺</button>}
