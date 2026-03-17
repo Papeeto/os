@@ -2981,56 +2981,35 @@ function PageAdmin({ setPage }) {
   };
 
   const supprimerPharmacie = async(pharmacieId, nom)=>{
-    const confirmation = window.prompt(
-      `⚠️ SUPPRESSION DÉFINITIVE\n\nTapez le nom exact de la pharmacie pour confirmer :\n"${nom}"`
-    );
-    if(confirmation === null) return; // annulé
-    if(confirmation.trim() !== nom.trim()){
-      alert("Nom incorrect. Suppression annulée.\nVous avez tapé : \""+confirmation+"\"\nNom attendu : \""+nom+"\"");
-      return;
-    }
+    if(!window.confirm(`Supprimer définitivement "${nom}" ?\nCette action est irréversible.`)) return;
+
     setActionLoading(pharmacieId);
 
-    // Suppression via Firebase REST API avec la clé secrète (contourne les règles)
-    const BASE = "https://mediconline-15d7f-default-rtdb.firebaseio.com";
+    const BASE   = "https://mediconline-15d7f-default-rtdb.firebaseio.com";
     const SECRET = "mJzQHDzvvI3ibsk6CTD5byTRKrH7jQKhDxQ7GNDa";
 
-    const supprFB = async(chemin)=>{
-      const url = BASE+"/"+chemin+".json"+(SECRET?"?auth="+SECRET:"");
-      try{
-        await fetch(url, {method:"DELETE"});
-      }catch(e){ console.warn("Erreur suppression "+chemin, e); }
-    };
+    const del = (chemin) =>
+      fetch(`${BASE}/${chemin}.json?auth=${SECRET}`, {method:"DELETE"})
+        .catch(e=>console.warn("del failed:", chemin, e));
 
-    try{
-      await Promise.all([
-        supprFB("pharmacies/"+pharmacieId),
-        supprFB("stock/"+pharmacieId),
-        supprFB("signalements/"+pharmacieId),
-        supprFB("rappels/"+pharmacieId),
-        supprFB("reservations/"+pharmacieId),
-      ]);
-      // Supprimer aussi via SDK Firebase (double sécurité)
-      try{
-        await getDB().ref("pharmacies/"+pharmacieId).remove();
-        await getDB().ref("stock/"+pharmacieId).remove();
-      }catch(e2){ /* ignoré si déjà supprimé */ }
+    await Promise.all([
+      del("pharmacies/"+pharmacieId),
+      del("stock/"+pharmacieId),
+      del("signalements/"+pharmacieId),
+      del("rappels/"+pharmacieId),
+      del("reservations/"+pharmacieId),
+    ]);
 
-      // Retirer des notifications admin
-      const notif = notifications.find(n=>n.pharmacieId===pharmacieId);
-      if(notif){
-        await supprFB("admin_notifications/"+notif.key);
-        try{ await getDB().ref("admin_notifications/"+notif.key).remove(); }catch(e){}
-      }
+    // Retirer des listes locales immédiatement
+    setPharmacies(prev => prev.filter(p => p.uid !== pharmacieId));
+    setNotifications(prev => prev.filter(n => n.pharmacieId !== pharmacieId));
 
-      // Rafraîchir la liste
-      setPharmacies(prev => prev.filter(p => p.uid !== pharmacieId));
-      setNotifications(prev => prev.filter(n => n.pharmacieId !== pharmacieId));
-      alert(`✅ Pharmacie "${nom}" supprimée définitivement.`);
-    }catch(e){
-      alert("Erreur lors de la suppression : "+e.message+"\n\nVérifiez votre connexion internet.");
-    }
+    // Nettoyer notification admin liée
+    const notif = notifications.find(n=>n.pharmacieId===pharmacieId);
+    if(notif) await del("admin_notifications/"+notif.key);
+
     setActionLoading("");
+    alert(`✅ "${nom}" supprimée.`);
   };
 
   useEffect(()=>{
