@@ -3040,9 +3040,9 @@ Tapez le nom exact de la pharmacie pour confirmer :
         <div className="auth-logo">Admin</div>
         <div className="auth-sub">Accès réservé</div>
         <div className="form-group" style={{marginTop:20}}>
-          <input className="form-input" type="password" placeholder="Mot de passe admin" value={mdp} onChange={e=>setMdp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(mdp==="mediconline2026"?setAuth(true):alert("Mauvais mot de passe"))}/>
+          <input className="form-input" type="password" placeholder="Mot de passe admin" value={mdp} onChange={e=>setMdp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(mdp==="medicolotus032tribune"?setAuth(true):alert("Mauvais mot de passe"))}/>
         </div>
-        <button className="btn btn-primary btn-full" onClick={()=>mdp==="mediconline2026"?setAuth(true):alert("Mauvais mot de passe")}>Accéder</button>
+        <button className="btn btn-primary btn-full" onClick={()=>mdp==="medicolotus032tribune"?setAuth(true):alert("Mauvais mot de passe")}>Accéder</button>
       </div>
     </div>
   );
