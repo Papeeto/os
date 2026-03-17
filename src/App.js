@@ -1961,63 +1961,56 @@ function ResultatsPatient({ recherche, setPage, isDemoMode, user }) {
   },[]);
 
   useEffect(()=>{
-    const run = async () => {
-    setLoading(true);
-
-    // ── MODE DÉMO OFFLINE ──────────────────────────────────────────────────
-    if(isDemoMode) {
-      setTimeout(()=>{
-        const found = searchDemoOffline(recherche);
-        const pos = userPos||[3.8667,11.5167];
-        const withDist = found.map(item=>({
-          ...item,
-          itemId: item.pharmacieId+"_"+item.nom,
-          pharmacieUid: item.pharmacieId,
-          distance: calculerDistance(pos[0],pos[1],item.lat,item.lng),
-          isDemo: true,
-        }));
-        withDist.sort((a,b)=>a.distance!==b.distance?a.distance-b.distance:a.prix-b.prix);
-        setResultats(withDist);
-        setLoading(false);
-      }, 600); // petit délai réaliste
-      return;
-    }
-
-    // ── MODE RÉEL (Firebase) ───────────────────────────────────────────────
-    if(!fbReady)return;
-    const [phSnap, snap] = await Promise.all([
-      getDB().ref("pharmacies").once("value"),
-      getDB().ref("stock").once("value")
-    ]);
-    const statutsVerif = {};
-    if(phSnap.exists()){
-      Object.entries(phSnap.val()).forEach(([uid,ph])=>{
-        statutsVerif[uid] = ph.statut||"en_attente";
-      });
-    }
-    {
-      const found=[];
-    if(snap.exists()){
-        Object.entries(snap.val()).forEach(([uid,items])=>{
-          // Masquer les pharmacies non vérifiées aux patients
-          if(statutsVerif[uid]==="suspendu") return;
-          if(statutsVerif[uid]==="en_attente" && !uid.startsWith("demo_ph_")) return;
-          Object.entries(items).forEach(([itemId,item])=>{
-            // Recherche floue : correspondance directe OU faute d'orthographe tolérée
-            const scoreItem = scoreFuzzy(recherche, {nom:item.nom||"",cat:item.cat||""});
-            if(scoreItem>0&&item.qte>0){
-              const pos=userPos||[3.8667,11.5167];
-              const dist=item.lat&&item.lng ? calculerDistance(pos[0],pos[1],item.lat,item.lng) : 99;
-              found.push({...item,itemId,pharmacieUid:uid,distance:dist});
-            }
+    const run = async()=>{
+      setLoading(true);
+      try{
+        if(isDemoMode){
+          await new Promise(r=>setTimeout(r,600));
+          const pos=userPos||[3.8667,11.5167];
+          const found=searchDemoOffline(recherche).map(item=>({
+            ...item,
+            itemId:item.pharmacieId+"_"+item.nom,
+            pharmacieUid:item.pharmacieId,
+            distance:calculerDistance(pos[0],pos[1],item.lat,item.lng),
+            isDemo:true,
+          }));
+          found.sort((a,b)=>a.distance!==b.distance?a.distance-b.distance:a.prix-b.prix);
+          setResultats(found);
+          setLoading(false);
+          return;
+        }
+        if(!fbReady){setLoading(false);return;}
+        const [phSnap,snap]=await Promise.all([
+          getDB().ref("pharmacies").once("value"),
+          getDB().ref("stock").once("value"),
+        ]);
+        const statutsVerif={};
+        if(phSnap.exists()){
+          Object.entries(phSnap.val()).forEach(([uid,ph])=>{
+            statutsVerif[uid]=ph.statut||"en_attente";
           });
-        });
-      }
-      found.sort((a,b)=> a.distance!==b.distance ? a.distance-b.distance : a.prix-b.prix);
-      setResultats(found);
-      setLoading(false);
-    }).catch(()=>setLoading(false));
-    }; run();
+        }
+        const found=[];
+        if(snap.exists()){
+          Object.entries(snap.val()).forEach(([uid,items])=>{
+            if(statutsVerif[uid]==="suspendu")return;
+            if(statutsVerif[uid]==="en_attente"&&!uid.startsWith("demo_ph_"))return;
+            Object.entries(items).forEach(([itemId,item])=>{
+              const score=scoreFuzzy(recherche,{nom:item.nom||"",cat:item.cat||""});
+              if(score>0&&item.qte>0){
+                const pos=userPos||[3.8667,11.5167];
+                const dist=item.lat&&item.lng?calculerDistance(pos[0],pos[1],item.lat,item.lng):99;
+                found.push({...item,itemId,pharmacieUid:uid,distance:dist});
+              }
+            });
+          });
+        }
+        found.sort((a,b)=>a.distance!==b.distance?a.distance-b.distance:a.prix-b.prix);
+        setResultats(found);
+        setLoading(false);
+      }catch(e){console.error(e);setLoading(false);}
+    };
+    run();
   },[fbReady,recherche,userPos,isDemoMode]);
 
   const catalogueMatch = CATALOGUE_MEDICAMENTS.filter(m=>
