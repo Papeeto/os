@@ -1137,7 +1137,8 @@ function AuthScreen({ onAuth }) {
   const [adresse,setAdresse] = useState("");
   const [loading,setLoading] = useState(false);
   const [error,setError]     = useState("");
-  const [step,setStep]       = useState(1); // étapes inscription
+  const [step,setStep]       = useState(1);
+  const [form,setForm]       = useState({autorisation:"",rccm:""});
 
   const QUARTIERS = ["Bastos","Centre-ville","Obili","Tsinga","Madagascar","Biyem-Assi",
     "Melen","Essos","Nlongkak","Cité Verte","Odza","Mvog-Mbi","Mendong","Ekounou",
@@ -1212,29 +1213,34 @@ function AuthScreen({ onAuth }) {
       });
       // Créer la fiche pharmacie — statut "en_attente" par défaut
       await getDB().ref("pharmacies/"+uid).set({
-        nom:       nom.trim(),
-        quartier:  quartier,
-        adresse:   adresse.trim()||(quartier+", Yaoundé"),
-        tel:       tel.trim(),
-        ouvert:    false,
-        adminUid:  uid,
-        lat:       coords.lat,
-        lng:       coords.lng,
-        createdAt: Date.now(),
-        statut:    "en_attente",   // en_attente | verifie | suspendu
-        verified:  false,
-        isReal:    true,
+        nom:           nom.trim(),
+        quartier:      quartier,
+        adresse:       adresse.trim()||(quartier+", Yaoundé"),
+        tel:           tel.trim(),
+        ouvert:        false,
+        adminUid:      uid,
+        lat:           coords.lat,
+        lng:           coords.lng,
+        createdAt:     Date.now(),
+        statut:        "en_attente",
+        verified:      false,
+        isReal:        true,
+        autorisation:  form.autorisation.trim(),
+        rccm:          form.rccm.trim(),
       });
       // Notifier Bryn (admin) qu'une nouvelle pharmacie attend validation
       await getDB().ref("admin_notifications").push({
-        type:      "nouvelle_pharmacie",
-        pharmacieId: uid,
-        nom:       nom.trim(),
-        quartier:  quartier,
-        tel:       tel.trim(),
-        email:     email,
-        date:      Date.now(),
-        lu:        false,
+        type:         "nouvelle_pharmacie",
+        pharmacieId:  uid,
+        nom:          nom.trim(),
+        quartier:     quartier,
+        adresse:      adresse.trim(),
+        tel:          tel.trim(),
+        email:        email,
+        autorisation: form.autorisation.trim(),
+        rccm:         form.rccm.trim(),
+        date:         Date.now(),
+        lu:           false,
       });
       onAuth({uid, email, role:"pharmacie", nomPharmacie:nom.trim(), tel:tel.trim(), statut:"en_attente"});
     }catch(e){ setError(ERREURS_FR[e.code]||"Erreur : "+e.message); }
@@ -1316,14 +1322,16 @@ function AuthScreen({ onAuth }) {
       {error&&<div className="alert alert-error mb16"><span className="alert-ico">⚠️</span><span>{error}</span></div>}
 
       {step===1&&(<>
+        <div style={{background:"#FFF7ED",border:"1px solid #FDE68A",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:"0.78rem",color:"#92400E",lineHeight:1.6}}>
+          🔐 <strong>Vérification obligatoire</strong> — Pour protéger les patients, toutes les pharmacies sont vérifiées avant d'apparaître sur Mediconline. Votre compte sera actif sous 24h après vérification.
+        </div>
         <div className="form-group">
-          <label className="form-label">Nom de la pharmacie *</label>
-          <input className="form-input" placeholder="ex: Pharmacie Bastos" value={nom} onChange={e=>setNom(e.target.value)}/>
+          <label className="form-label">Nom officiel de la pharmacie *</label>
+          <input className="form-input" placeholder="ex: Pharmacie du Marché Central" value={nom} onChange={e=>setNom(e.target.value)}/>
         </div>
         <div className="form-group">
           <label className="form-label">Numéro de téléphone *</label>
           <input className="form-input" type="tel" placeholder="ex: 699 123 456" value={tel} onChange={e=>setTel(e.target.value)}/>
-          <div style={{fontSize:"0.72rem",color:"var(--grey-text)",marginTop:4}}>Les patients pourront vous appeler depuis l'app</div>
         </div>
         <div className="form-group">
           <label className="form-label">Quartier *</label>
@@ -1333,37 +1341,68 @@ function AuthScreen({ onAuth }) {
           </select>
         </div>
         <div className="form-group">
-          <label className="form-label">Adresse précise <span style={{color:"var(--grey-text)",fontWeight:400}}>(optionnel)</span></label>
-          <input className="form-input" placeholder="ex: Face au marché, Rue principale" value={adresse} onChange={e=>setAdresse(e.target.value)}/>
+          <label className="form-label">Adresse précise *</label>
+          <input className="form-input" placeholder="ex: Face au marché central, Rue Ngoa-Ekelle" value={adresse} onChange={e=>setAdresse(e.target.value)}/>
         </div>
         <button className="btn btn-primary btn-full" onClick={()=>{
-          if(!nom.trim()){setError("Le nom de la pharmacie est obligatoire.");return;}
+          if(!nom.trim()){setError("Le nom officiel est obligatoire.");return;}
           if(!tel.trim()){setError("Le numéro de téléphone est obligatoire.");return;}
           if(!quartier){setError("Veuillez sélectionner votre quartier.");return;}
+          if(!adresse.trim()){setError("L'adresse précise est obligatoire.");return;}
           setError(""); setStep(2);
         }}>Suivant →</button>
       </>)}
 
       {step===2&&(<>
         <div style={{background:"#F0FDF4",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:"0.8rem",color:"#065F46"}}>
-          ✅ <strong>{nom}</strong> · {quartier} · {tel}
+          ✅ <strong>{nom}</strong> · {quartier} · {tel} · {adresse}
           <span style={{cursor:"pointer",color:"var(--teal)",marginLeft:8,fontSize:"0.72rem"}} onClick={()=>setStep(1)}>Modifier</span>
         </div>
+
+        {/* Numéro d'autorisation — OBLIGATOIRE */}
+        <div className="form-group">
+          <label className="form-label">
+            Numéro d'autorisation d'exercice *
+            <span style={{fontWeight:400,color:"var(--grey-text)",marginLeft:4}}>(délivré par le Ministère de la Santé)</span>
+          </label>
+          <input className="form-input" placeholder="ex: MINSANTE/2023/PH/1234"
+            value={form?.autorisation||""} onChange={e=>setForm&&setForm(f=>({...f,autorisation:e.target.value}))}
+            style={{letterSpacing:"0.05em"}}/>
+          <div style={{fontSize:"0.72rem",color:"#D97706",marginTop:4,lineHeight:1.5}}>
+            ⚠️ Ce numéro est vérifié par l'équipe Mediconline. Un faux numéro entraîne la suppression définitive du compte.
+          </div>
+        </div>
+
+        {/* RCCM optionnel */}
+        <div className="form-group">
+          <label className="form-label">
+            Numéro RCCM
+            <span style={{fontWeight:400,color:"var(--grey-text)",marginLeft:4}}>(optionnel mais recommandé)</span>
+          </label>
+          <input className="form-input" placeholder="ex: RC/YAO/2020/B/1234"
+            value={form?.rccm||""} onChange={e=>setForm&&setForm(f=>({...f,rccm:e.target.value}))}/>
+        </div>
+
         <div className="form-group">
           <label className="form-label">Email professionnel *</label>
           <input className="form-input" type="email" placeholder="pharmacie@email.com" value={email} onChange={e=>setEmail(e.target.value)}/>
-          <div style={{fontSize:"0.72rem",color:"var(--grey-text)",marginTop:4}}>Pour vous connecter à Mediconline</div>
         </div>
         <div className="form-group">
           <label className="form-label">Mot de passe *</label>
           <input className="form-input" type="password" placeholder="Minimum 6 caractères" value={password} onChange={e=>setPassword(e.target.value)}/>
         </div>
-        <div style={{background:"#EFF6FF",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:"0.77rem",color:"#1E40AF",lineHeight:1.6}}>
-          🔒 Vos données sont sécurisées avec Firebase.<br/>
-          Mediconline ne partage jamais vos informations.
+
+        {/* Engagement légal */}
+        <div style={{background:"#FEF9EC",border:"1px solid #FDE68A",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:"0.77rem",color:"#78350F",lineHeight:1.7}}>
+          <strong>En créant ce compte, vous confirmez que :</strong>
+          <div>✅ Vous êtes le propriétaire ou gérant légal de cette pharmacie</div>
+          <div>✅ Les informations fournies sont exactes et vérifiables</div>
+          <div>✅ Vous vous engagez à maintenir votre stock à jour</div>
+          <div>✅ Tout faux compte sera signalé aux autorités compétentes</div>
         </div>
+
         <button className="btn btn-primary btn-full" onClick={handleRegister} disabled={loading||!fbReady}>
-          {loading?"⏳ Création du compte...":(fbReady?"✅ Créer mon compte et démarrer":"⏳ Connexion Firebase...")}
+          {loading?"⏳ Création du compte...":(fbReady?"✅ Créer mon compte pharmacie":"⏳ Connexion...")}
         </button>
         <div style={{textAlign:"center",marginTop:8}}>
           <span style={{fontSize:"0.75rem",color:"var(--grey-text)",cursor:"pointer"}} onClick={()=>setStep(1)}>← Retour</span>
@@ -3879,17 +3918,20 @@ function Topbar({ role, setRole, setPage, user, onLogout, onAdminOpen, isDemoMod
           cursor:"pointer",fontFamily:"Mulish",fontWeight:700,whiteSpace:"nowrap",
           display:"flex",alignItems:"center",gap:4,transition:"all 0.2s"
         }}>
-          {isDemoMode?"⏹ Quitter démo":"▶ Démo"}
+          {isDemoMode?"⏹ Démo":"▶ Démo"}
         </button>
         {!installed&&(
           <button onClick={handleInstallClick} style={{
-            background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.35)",
-            color:"white",padding:"5px 11px",borderRadius:99,fontSize:"0.72rem",
-            cursor:"pointer",fontFamily:"Mulish",fontWeight:700,whiteSpace:"nowrap",
-            display:"flex",alignItems:"center",gap:4
-          }}>📲 Installer</button>
+            background:"#0A7B6C",border:"2px solid rgba(255,255,255,0.4)",
+            color:"white",padding:"6px 14px",borderRadius:99,fontSize:"0.75rem",
+            cursor:"pointer",fontFamily:"Mulish",fontWeight:800,whiteSpace:"nowrap",
+            display:"flex",alignItems:"center",gap:5,
+            boxShadow:"0 2px 8px rgba(0,0,0,0.3)"
+          }}>
+            <span style={{fontSize:"1rem"}}>📲</span> Installer l'app
+          </button>
         )}
-        {installed&&<span style={{fontSize:"0.68rem",color:"rgba(255,255,255,0.4)"}}>✅ Installée</span>}
+        {installed&&<span style={{fontSize:"0.72rem",color:"rgba(255,255,255,0.5)",display:"flex",alignItems:"center",gap:3}}>✅ App installée</span>}
         {!user&&<div className="role-switch">
           <button className={"role-btn"+(role==="patient"?" active":"")} onClick={()=>{setRole("patient");setPage("accueil");}}>👤 Patient</button>
           <button className={"role-btn"+(role==="pharmacie"?" active":"")} onClick={()=>{setRole("pharmacie");setPage("dashboard");}}>🏥 Pharmacie</button>
@@ -4142,9 +4184,20 @@ function PageAdmin({ setPage }) {
                   <div>
                     <div style={{fontWeight:800,fontSize:"0.95rem",color:"var(--navy)"}}>{notif.nom}</div>
                     <div style={{fontSize:"0.8rem",color:"var(--grey-text)",marginTop:2}}>
-                      📍 {notif.quartier} · 📞 {notif.tel||"Non renseigné"} · 📧 {notif.email}
+                      📍 {notif.quartier} · {notif.adresse||""} · 📞 {notif.tel||"Non renseigné"} · 📧 {notif.email}
                     </div>
-                    <div style={{fontSize:"0.75rem",color:"var(--grey-text)",marginTop:2}}>
+                    {notif.autorisation&&(
+                      <div style={{fontSize:"0.8rem",marginTop:4,background:"#F0FDF4",padding:"4px 10px",borderRadius:6,display:"inline-block"}}>
+                        🏛️ Autorisation : <strong style={{color:"#065F46"}}>{notif.autorisation}</strong>
+                        {notif.rccm&&<span style={{marginLeft:8,color:"#059669"}}>· RCCM : {notif.rccm}</span>}
+                      </div>
+                    )}
+                    {!notif.autorisation&&(
+                      <div style={{fontSize:"0.78rem",marginTop:4,color:"#DC2626",fontWeight:600}}>
+                        ⚠️ Aucun numéro d'autorisation fourni — vérifier par téléphone
+                      </div>
+                    )}
+                    <div style={{fontSize:"0.75rem",color:"var(--grey-text)",marginTop:4}}>
                       Inscrite le {new Date(notif.date).toLocaleDateString("fr-FR")} à {new Date(notif.date).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
                     </div>
                   </div>
