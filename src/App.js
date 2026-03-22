@@ -1195,6 +1195,14 @@ function AuthScreen({ onAuth }) {
         setError("Une pharmacie avec ce nom existe déjà sur Mediconline.");
         setLoading(false); return;
       }
+      // Vérifier que le numéro d'autorisation n'est pas déjà utilisé
+      if(form.autorisation.trim()){
+        const autoSnap = await getDB().ref("pharmacies").orderByChild("autorisation").equalTo(form.autorisation.trim()).once("value");
+        if(autoSnap.exists()){
+          setError("Ce numéro d'autorisation est déjà associé à une pharmacie inscrite. Contactez le support si c'est une erreur.");
+          setLoading(false); return;
+        }
+      }
       const cred = await getAuth().createUserWithEmailAndPassword(email,password);
       const uid  = cred.user.uid;
       // Coordonnées approx selon quartier
@@ -3115,6 +3123,9 @@ function Dashboard({ stock, setPage, user }) {
     return()=>getDB().ref("pharmacies/"+user.uid+"/statut").off();
   },[fbReady,user]);
 
+  // Guide de démarrage pour nouvelles pharmacies
+  const stockVide = stock.length === 0;
+
   return(
     <div className="main">
       {/* ── Bandeau statut validation ── */}
@@ -3155,9 +3166,35 @@ function Dashboard({ stock, setPage, user }) {
       {statutPharmacie==="verifie"&&(
         <div style={{background:"#F0FDF4",border:"1px solid #059669",borderRadius:8,padding:"8px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
           <span>✅</span>
-          <span style={{fontSize:"0.82rem",color:"#065F46",fontWeight:600}}>Pharmacie vérifiée — Votre stock est visible par tous les patients de Yaoundé</span>
+          <span style={{fontSize:"0.82rem",color:"#065F46",fontWeight:600}}>Pharmacie vérifiée — Visible par tous les patients de Yaoundé</span>
         </div>
       )}
+
+      {/* ── Guide de démarrage si stock vide ── */}
+      {statutPharmacie==="verifie"&&stockVide&&(
+        <div className="card mb20" style={{background:"linear-gradient(135deg,#F0FDF4,#E1F5EE)",border:"2px solid var(--teal)"}}>
+          <div style={{fontFamily:"Syne",fontWeight:800,fontSize:"1rem",color:"var(--navy)",marginBottom:12}}>
+            🎉 Bienvenue ! Votre pharmacie est vérifiée. Voici comment démarrer :
+          </div>
+          {[
+            {num:"1",titre:"Ajoutez votre stock",desc:'Cliquez sur "➕ Ajouter" pour importer vos médicaments depuis votre logiciel, un fichier CSV, ou manuellement.',page:"ajouter",btn:"➕ Ajouter des médicaments"},
+            {num:"2",titre:"Connectez votre logiciel",desc:"Installez le connecteur Mediconline pour une synchronisation automatique à chaque vente.",page:"ajouter",btn:"🔌 Voir la connexion logiciel"},
+            {num:"3",titre:"Mettez à jour votre profil",desc:"Ajoutez votre adresse exacte, vos horaires et votre numéro de téléphone pour que les patients vous trouvent facilement.",page:"profil",btn:"⚙️ Compléter le profil"},
+          ].map((step,i)=>(
+            <div key={i} style={{display:"flex",gap:12,padding:"10px 0",borderBottom:i<2?"1px solid rgba(10,123,108,0.15)":"none"}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:"var(--teal)",color:"white",fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:"0.85rem"}}>{step.num}</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,color:"var(--navy)",fontSize:"0.85rem"}}>{step.titre}</div>
+                <div style={{fontSize:"0.78rem",color:"var(--grey-text)",marginTop:2,lineHeight:1.5}}>{step.desc}</div>
+              </div>
+              <button onClick={()=>setPage(step.page)} style={{background:"var(--teal)",color:"white",border:"none",padding:"6px 14px",borderRadius:99,fontWeight:700,cursor:"pointer",fontSize:"0.75rem",fontFamily:"Mulish",whiteSpace:"nowrap",alignSelf:"center"}}>
+                {step.btn}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="dash-header">
         <h2>🏥 {user?.nomPharmacie||"Mon Dashboard"}</h2>
         <p><span className="status-dot online"></span>Connecté · Firebase 🔥 · {statutPharmacie==="verifie"?"Visible par les patients":"En attente de validation"}</p>
@@ -3319,7 +3356,7 @@ function GestionStock({ stock, user, setPage }) {
 // ➕ AJOUTER MÉDICAMENT — avec catalogue suggéré
 // ══════════════════════════════════════════════════════════════════════════════
 function AjouterMedicament({ user, setPage }) {
-  const [onglet,setOnglet]=useState("manuel"); // "manuel" | "excel" | "catalogue"
+  const [onglet,setOnglet]=useState("catalogue"); // "catalogue" | "excel" | "logiciel" | "manuel"
   const [form,setForm]=useState({nom:"",cat:"",prix:"",qte:"",exp:""});
   const [suggestions,setSuggestions]=useState([]);
   const [success,setSuccess]=useState(false);
@@ -3444,8 +3481,12 @@ function AjouterMedicament({ user, setPage }) {
 
       {/* Onglets */}
       <div className="auth-tabs mb20" style={{marginBottom:20}}>
-        <div className={"auth-tab"+(onglet==="catalogue"?" active":"")} onClick={()=>setOnglet("catalogue")}>📋 Depuis le catalogue</div>
-        <div className={"auth-tab"+(onglet==="excel"?" active":"")} onClick={()=>setOnglet("excel")}>📂 Importer CSV/Excel</div>
+        <div className={"auth-tab"+(onglet==="catalogue"?" active":"")} onClick={()=>setOnglet("catalogue")}>📋 Catalogue</div>
+        <div className={"auth-tab"+(onglet==="logiciel"?" active":"")} onClick={()=>setOnglet("logiciel")} style={{position:"relative"}}>
+          🔌 Logiciel
+          <span style={{position:"absolute",top:-6,right:-4,background:"#0A7B6C",color:"white",fontSize:"0.55rem",padding:"1px 5px",borderRadius:99,fontWeight:700}}>AUTO</span>
+        </div>
+        <div className={"auth-tab"+(onglet==="excel"?" active":"")} onClick={()=>setOnglet("excel")}>📂 CSV/Excel</div>
         <div className={"auth-tab"+(onglet==="manuel"?" active":"")} onClick={()=>setOnglet("manuel")}>✏️ Manuel</div>
       </div>
 
@@ -3500,6 +3541,125 @@ function AjouterMedicament({ user, setPage }) {
             </button>
           </div>
           {importDone&&<div className="alert alert-success mt16"><span className="alert-ico">🎉</span><span>{importLog[0]}</span></div>}
+        </div>
+      )}
+
+      {/* ══ ONGLET CONNEXION LOGICIEL ══ */}
+      {onglet==="logiciel"&&(
+        <div>
+          {/* Statut connexion */}
+          <div className="card mb16" style={{background:"linear-gradient(135deg,#0D2B3E,#0A7B6C)",border:"none"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+              <span style={{fontSize:"2rem"}}>🔌</span>
+              <div>
+                <div style={{fontFamily:"Syne",fontWeight:800,fontSize:"1.1rem",color:"white"}}>
+                  Connexion automatique avec votre logiciel
+                </div>
+                <div style={{fontSize:"0.82rem",color:"rgba(255,255,255,0.7)",marginTop:2}}>
+                  Chaque vente dans votre logiciel met à jour Mediconline automatiquement
+                </div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {["Winpharma","Vindata","Galien","Esculape","Excel","Tout logiciel"].map(l=>(
+                <span key={l} style={{background:"rgba(255,255,255,0.15)",color:"white",padding:"4px 12px",borderRadius:99,fontSize:"0.75rem",fontWeight:600}}>{l}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Étapes */}
+          <div className="card mb16">
+            <div className="card-title mb16">📋 Comment connecter votre logiciel — 4 étapes</div>
+            {[
+              {
+                num:"1", titre:"Téléchargez le connecteur",
+                desc:"Cliquez le bouton ci-dessous pour recevoir le connecteur Mediconline par email ou WhatsApp.",
+                action:true, actionLabel:"📥 Recevoir le connecteur"
+              },
+              {
+                num:"2", titre:"Installez Python (gratuit)",
+                desc:"Allez sur python.org → téléchargez Python → cochez 'Add Python to PATH' → installez.",
+                link:"https://www.python.org/downloads/"
+              },
+              {
+                num:"3", titre:"Lancez LANCER_CONNECTEUR.bat",
+                desc:"Double-cliquez sur ce fichier. Une interface s'ouvre dans votre navigateur automatiquement."
+              },
+              {
+                num:"4", titre:"Entrez votre ID Pharmacie",
+                desc:"Trouvez votre ID dans Profil → section Connecteur. Collez-le dans le connecteur.",
+                highlight: true
+              },
+            ].map((e,i)=>(
+              <div key={i} style={{display:"flex",gap:14,padding:"14px 0",borderBottom:i<3?"1px solid var(--grey-border)":"none"}}>
+                <div style={{
+                  width:32,height:32,borderRadius:"50%",background:"var(--teal)",
+                  color:"white",fontWeight:800,display:"flex",alignItems:"center",
+                  justifyContent:"center",flexShrink:0,fontSize:"0.9rem"
+                }}>{e.num}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,color:"var(--navy)",fontSize:"0.88rem",marginBottom:3}}>{e.titre}</div>
+                  <div style={{fontSize:"0.8rem",color:"var(--grey-text)",lineHeight:1.6}}>{e.desc}</div>
+                  {e.link&&(
+                    <a href={e.link} target="_blank" rel="noopener noreferrer"
+                      style={{display:"inline-block",marginTop:6,color:"var(--teal)",fontSize:"0.78rem",fontWeight:600}}>
+                      Télécharger Python →
+                    </a>
+                  )}
+                  {e.highlight&&(
+                    <div style={{marginTop:8,background:"#F0FDF4",borderRadius:8,padding:"8px 12px",fontSize:"0.78rem",color:"#065F46"}}>
+                      💡 Votre ID : <strong style={{fontFamily:"monospace"}}>{user?.uid?.slice(0,12)}...</strong>
+                      <span style={{marginLeft:8,cursor:"pointer",color:"var(--teal)",fontWeight:700}}
+                        onClick={()=>{
+                          navigator.clipboard?.writeText(user?.uid||"");
+                          alert("ID copié !");
+                        }}>
+                        Copier
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Votre ID pharmacie */}
+          <div className="card mb16">
+            <div className="card-title mb12">🔑 Votre ID Pharmacie</div>
+            <div style={{background:"#0D2B3E",borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+              <span style={{fontFamily:"monospace",color:"#4DB8FF",fontWeight:700,fontSize:"0.9rem",wordBreak:"break-all"}}>
+                {user?.uid||"—"}
+              </span>
+              <button onClick={()=>{
+                navigator.clipboard?.writeText(user?.uid||"").then(()=>alert("✅ ID copié !"));
+              }} style={{background:"var(--teal)",color:"white",border:"none",padding:"7px 16px",borderRadius:99,fontWeight:700,cursor:"pointer",fontSize:"0.8rem",fontFamily:"Mulish",whiteSpace:"nowrap"}}>
+                📋 Copier
+              </button>
+            </div>
+            <div style={{fontSize:"0.75rem",color:"var(--grey-text)",marginTop:8}}>
+              ⚠️ Ne partagez jamais cet ID avec quelqu'un d'autre que le support Mediconline.
+            </div>
+          </div>
+
+          {/* Formats supportés */}
+          <div className="card">
+            <div className="card-title mb12">📂 Formats d'export supportés</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {[
+                {fmt:".csv",  desc:"Export universel",    color:"#059669"},
+                {fmt:".xlsx", desc:"Microsoft Excel",     color:"#1D6F42"},
+                {fmt:".xls",  desc:"Excel ancien format", color:"#1D6F42"},
+                {fmt:".db",   desc:"SQLite (Galien)",     color:"#7C3AED"},
+                {fmt:".mdb",  desc:"Access (Esculape)",   color:"#DC2626"},
+                {fmt:"Auto",  desc:"Détection auto",      color:"var(--teal)"},
+              ].map((f,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#F9FAFB",borderRadius:8}}>
+                  <span style={{fontWeight:800,color:f.color,fontFamily:"monospace",fontSize:"0.82rem",minWidth:48}}>{f.fmt}</span>
+                  <span style={{fontSize:"0.75rem",color:"var(--grey-text)"}}>{f.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
