@@ -2763,7 +2763,7 @@ function useSeedDemo(fbReady) {
   },[fbReady]);
 }
 
-function ResultatsPatient({ recherche, setPage, isDemoMode, user }) {
+function ResultatsPatient({ recherche, setPage, isDemoMode, user, setRecherche }) {
   const fbReady=useFirebaseReady();
   useSeedDemo(fbReady);
   const [resultats,setResultats]=useState([]);
@@ -2833,11 +2833,89 @@ function ResultatsPatient({ recherche, setPage, isDemoMode, user }) {
     run();
   },[fbReady,recherche,userPos,isDemoMode]);
 
-  const catalogueMatch=CATALOGUE_MEDICAMENTS.filter(m=>
-    m.nom.toLowerCase().includes(recherche.toLowerCase())
-  );
-  const hasFbResults=resultats.length>0;
+  // ── Résultats combinés : Firebase + hors catalogue ─────────────────────────
+  // Si un médicament est en stock dans une pharmacie mais pas dans le catalogue,
+  // il s'affiche quand même — Mediconline est surpuissant
+  const tousMedicaments = resultats; // déjà filtrés par scoreFuzzy côté Firebase
+  const catalogueMatch  = rechercherFloue(recherche, 6);
+  const hasFbResults    = tousMedicaments.length > 0;
 
+  return(
+    <div className="main">
+      {/* Barre haut */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+        <button className="btn btn-secondary btn-sm" onClick={()=>setPage("accueil")}>← Retour</button>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"Syne",fontWeight:800,fontSize:"1.1rem",color:"var(--navy)"}}>
+            Résultats pour <span style={{color:"var(--teal)"}}>{recherche}</span>
+          </div>
+          <div style={{fontSize:"0.75rem",color:"var(--grey-text)"}}>
+            {loading?"Recherche en cours..."
+              :hasFbResults?`${tousMedicaments.length} résultat${tousMedicaments.length>1?"s":""} dans ${[...new Set(tousMedicaments.map(r=>r.pharmacieNom))].length} pharmacie${[...new Set(tousMedicaments.map(r=>r.pharmacieNom))].length>1?"s":""}`
+              :"Aucun résultat trouvé"}
+          </div>
+        </div>
+      </div>
+
+      {/* Loading */}
+      {loading&&(
+        <div style={{textAlign:"center",padding:"40px 0"}}>
+          <div className="spinner" style={{margin:"0 auto 12px"}}/>
+          <div style={{color:"var(--grey-text)",fontSize:"0.85rem"}}>Recherche dans toutes les pharmacies...</div>
+        </div>
+      )}
+
+      {/* Résultats Firebase */}
+      {!loading&&hasFbResults&&(
+        <>
+          {isDemoMode&&(
+            <div style={{background:"#FFF7ED",border:"1px solid #FDE68A",borderRadius:8,padding:"8px 14px",marginBottom:12,fontSize:"0.78rem",color:"#92400E"}}>
+              🎭 Mode démo — données fictives pour présentation
+            </div>
+          )}
+          {tousMedicaments.map((r,i)=>(
+            <CarteResultat key={r.itemId||i} r={r} i={i} fbReady={fbReady} setPage={setPage} recherche={recherche} user={user}/>
+          ))}
+        </>
+      )}
+
+      {/* Aucun résultat */}
+      {!loading&&!hasFbResults&&(
+        <div className="card" style={{textAlign:"center",padding:"32px 20px"}}>
+          <div style={{fontSize:"2.5rem",marginBottom:12}}>🔍</div>
+          <div style={{fontFamily:"Syne",fontWeight:800,fontSize:"1rem",color:"var(--navy)",marginBottom:8}}>
+            Aucune pharmacie ne propose <em>{recherche}</em> actuellement
+          </div>
+          <div style={{color:"var(--grey-text)",fontSize:"0.85rem",marginBottom:16,lineHeight:1.6}}>
+            Ce médicament n'est pas en stock dans les pharmacies disponibles.<br/>
+            Essayez un nom similaire ou revenez plus tard.
+          </div>
+          {/* Suggestions du catalogue même si pas en stock */}
+          {catalogueMatch.length>0&&(
+            <div style={{marginTop:16,textAlign:"left"}}>
+              <div style={{fontWeight:700,fontSize:"0.85rem",color:"var(--navy)",marginBottom:10}}>
+                💡 Médicaments similaires — cliquez pour chercher :
+              </div>
+              {catalogueMatch.map(m=>(
+                <div key={m.id} onClick={()=>{setRecherche&&setRecherche(m.nom);}}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",
+                    background:"var(--light)",borderRadius:8,marginBottom:6,cursor:"pointer",
+                    border:"1px solid var(--grey-border)"}}>
+                  <span style={{fontSize:"1.2rem"}}>{m.emoji}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:"0.82rem",fontWeight:600,color:"var(--navy)"}}>{m.nom}</div>
+                    <div style={{fontSize:"0.72rem",color:"var(--grey-text)"}}>{m.cat} · ~{m.prixRef} FCFA</div>
+                  </div>
+                  <span style={{color:"var(--teal)",fontSize:"0.75rem",fontWeight:700}}>Chercher →</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 📊 DASHBOARD PHARMACIE
@@ -4419,7 +4497,7 @@ export default function App() {
       {role==="patient"&&page==="accueil"   &&<AccueilPatient setPage={setPage} setRecherche={setRecherche} isDemoMode={isDemoMode}/>}
       {role==="patient"&&page==="carte"     &&<PageCarte/>}
       {role==="patient"&&page==="garde"     &&<PageGarde setPage={setPage}/>}
-      {role==="patient"&&page==="resultats" &&<ResultatsPatient recherche={recherche||"Paracétamol"} setPage={setPage} isDemoMode={isDemoMode} user={user}/>}
+      {role==="patient"&&page==="resultats" &&<ResultatsPatient recherche={recherche||"Paracétamol"} setPage={setPage} isDemoMode={isDemoMode} user={user} setRecherche={setRecherche}/>}
       {role==="patient"&&page==="compte"&&!user&&<AuthPatient onAuth={u=>{setUser(u);setRole("patient");setPage("accueil");}} onSkip={()=>setPage("accueil")}/>}
       {role==="patient"&&page==="compte"&&user&&user.role==="patient"&&<ProfilPatient user={user} onLogout={()=>{getAuth().signOut();setUser(null);setRole("patient");setPage("accueil");}}/>}
       {role==="pharmacie"&&!user            &&<AuthScreen onAuth={handleAuth}/>}
