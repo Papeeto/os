@@ -2879,13 +2879,7 @@ function ResultatsPatient({ recherche, setPage, isDemoMode, user, setRecherche }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 📊 DASHBOARD PHARMACIE
-// ══════════════════════════════════════════════════════════════════════════════
-
-// ══════════════════════════════════════════════════════════════════════════════
-// 📊 PAGE STATISTIQUES PHARMACIE
-// ══════════════════════════════════════════════════════════════════════════════
-function PageStatistiques({ user, stock }) {
+// 📊 DASHBOARD PHARMACIE) {
   const fbReady = useFirebaseReady();
   const [reservations, setReservations] = useState([]);
   const [historique,   setHistorique]   = useState([]);
@@ -3858,10 +3852,7 @@ function ProfilPharmacie({ user }) {
       if(data&&data.length>0){
         const {lat,lon} = data[0];
         setTmp(f=>({...f, lat:parseFloat(lat), lng:parseFloat(lon)}));
-        alert(`✅ Position trouvée !
-Lat: ${parseFloat(lat).toFixed(4)}, Lng: ${parseFloat(lon).toFixed(4)}
-
-Cliquez "Enregistrer" pour sauvegarder.`);
+        alert("✅ Position trouvée ! Lat: "+parseFloat(lat).toFixed(4)+", Lng: "+parseFloat(lon).toFixed(4)+"\n\nCliquez Enregistrer pour sauvegarder.");
       } else {
         // Fallback : coordonnées par quartier
         const coordsMap = {
@@ -3873,8 +3864,7 @@ Cliquez "Enregistrer" pour sauvegarder.`);
         const coords = coordsMap[tmp.quartier];
         if(coords){
           setTmp(f=>({...f,...coords}));
-          alert(`📍 Position approximative pour ${tmp.quartier} appliquée.
-Pour plus de précision, ajoutez votre adresse exacte.`);
+          alert("📍 Position approximative pour "+tmp.quartier+" appliquée. Pour plus de précision, ajoutez votre adresse exacte.");
         } else {
           alert("Adresse introuvable. Vérifiez l'adresse et réessayez.");
         }
@@ -3993,9 +3983,7 @@ Pour plus de précision, ajoutez votre adresse exacte.`);
                     pos=>{
                       set("lat",pos.coords.latitude);
                       set("lng",pos.coords.longitude);
-                      alert("✅ Position GPS enregistrée !
-Lat: "+pos.coords.latitude.toFixed(5)+"
-Lng: "+pos.coords.longitude.toFixed(5));
+                      alert("✅ Position GPS enregistrée !\nLat: "+pos.coords.latitude.toFixed(5)+"\nLng: "+pos.coords.longitude.toFixed(5));
                     },
                     ()=>alert("Impossible d'obtenir votre position. Activez le GPS.")
                   );
