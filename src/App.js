@@ -1717,8 +1717,7 @@ function useAvisPharmacie(pharmacieId, fbReady) {
 
   return {avis,moyenne,nbAvis};
 }
-
-function EtoilesAvis({ note, editable=false, onChange }) {
+function EtoilesInteractives({ note=0, editable=false, onChange=null }) {
   const [hover,setHover] = useState(0);
   return(
     <div style={{display:"flex",gap:2}}>
@@ -1733,8 +1732,7 @@ function EtoilesAvis({ note, editable=false, onChange }) {
     </div>
   );
 }
-
-function FormulaireAvis({ pharmacieId, pharmacieNom, user, fbReady, onClose }) {
+) {
   const [note,setNote]       = useState(0);
   const [commentaire,setCommentaire] = useState("");
   const [loading,setLoading] = useState(false);
@@ -1785,7 +1783,6 @@ function FormulaireAvis({ pharmacieId, pharmacieNom, user, fbReady, onClose }) {
     </div>
   );
 }
-
 ) {
   const {avis,moyenne,nbAvis} = useAvisPharmacie(pharmacieId, fbReady);
   const [showForm,setShowForm] = useState(false);
@@ -1949,7 +1946,7 @@ function SectionAvis({ pharmacieId, pharmacieNom, user, fbReady }) {
 }
 
 // ── Système d'avis et notes ─────────────────────────────────────────────────
-) {
+function MiniEtoiles({ note, max=5, size="0.85rem" }) {
   return(
     <span style={{display:"inline-flex",gap:1}}>
       {Array.from({length:max},(_,i)=>(
@@ -1959,7 +1956,7 @@ function SectionAvis({ pharmacieId, pharmacieNom, user, fbReady }) {
   );
 }
 
-) {
+function FormulaireAvis({ pharmacieId, pharmacieNom, user, fbReady, onClose }) {
   const [note,setNote]       = useState(0);
   const [hover,setHover]     = useState(0);
   const [commentaire,setCommentaire] = useState("");
@@ -2046,7 +2043,7 @@ function SectionAvis({ pharmacieId, pharmacieNom, user, fbReady }) {
 // ══════════════════════════════════════════════════════════════════════════════
 async 
 
-) {
+function EtoilesAvis({ note=0, taille="1rem", onClick=null }) {
   return(
     <span style={{display:"inline-flex",gap:1,cursor:onClick?"pointer":"default"}}>
       {[1,2,3,4,5].map(i=>(
@@ -2205,7 +2202,7 @@ function AvisModal({ pharmacieId, pharmacieNom, user, fbReady, onClose }) {
   );
 }
 
-) {
+function NoteEtoiles({ note }) {
   if(!note) return null;
   const plein = Math.floor(note);
   const demi  = note - plein >= 0.5;
