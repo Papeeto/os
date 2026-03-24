@@ -2280,7 +2280,6 @@ function CarteResultat({ r, i, fbReady, setPage, recherche, user }) {
   const [resLoading, setResLoading]   = useState(false);
   const [resInfo, setResInfo]         = useState(null);
   const [showResModal, setShowResModal] = useState(false);
-  const [showAvis, setShowAvis] = useState(false);
 
   // Calculer le vrai stock disponible (stock - réservations actives)
   useEffect(()=>{
